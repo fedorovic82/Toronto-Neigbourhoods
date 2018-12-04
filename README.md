@@ -1,2 +1,2 @@
-# toronto
-Segmenting and Clustering Neighborhoods in Toronto
+# Toronto
+Segmenting and Clustering Neighbourhoods in Toronto
