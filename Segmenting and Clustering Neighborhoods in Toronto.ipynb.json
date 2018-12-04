@@ -1,0 +1,738 @@
+{
+ "cells": [
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "# Explore and Cluster the Neighborhoods in Toronto"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 2,
+   "metadata": {},
+   "outputs": [
+    {
+     "name": "stderr",
+     "output_type": "stream",
+     "text": [
+      "/anaconda3/lib/python3.7/importlib/_bootstrap.py:219: RuntimeWarning: numpy.dtype size changed, may indicate binary incompatibility. Expected 96, got 88\n",
+      "  return f(*args, **kwds)\n",
+      "/anaconda3/lib/python3.7/importlib/_bootstrap.py:219: RuntimeWarning: numpy.dtype size changed, may indicate binary incompatibility. Expected 96, got 88\n",
+      "  return f(*args, **kwds)\n"
+     ]
+    },
+    {
+     "name": "stdout",
+     "output_type": "stream",
+     "text": [
+      "Solving environment: done\n",
+      "\n",
+      "# All requested packages already installed.\n",
+      "\n",
+      "Solving environment: done\n",
+      "\n",
+      "# All requested packages already installed.\n",
+      "\n",
+      "Libraries imported.\n"
+     ]
+    }
+   ],
+   "source": [
+    "# library to handle data in a vectorized manner\n",
+    "import numpy as np \n",
+    "\n",
+    "# library for data analsysis\n",
+    "import pandas as pd \n",
+    "pd.set_option('display.max_columns', None)\n",
+    "pd.set_option('display.max_rows', None)\n",
+    "\n",
+    "# library to handle JSON files\n",
+    "import json \n",
+    "\n",
+    "# uncomment this line if you haven't completed the Foursquare API lab\n",
+    "# convert an address into latitude and longitude values\n",
+    "!conda install -c conda-forge geopy --yes \n",
+    "from geopy.geocoders import Nominatim \n",
+    "\n",
+    "# library to handle requests\n",
+    "# tranform JSON file into a pandas dataframe\n",
+    "import requests\n",
+    "from pandas.io.json import json_normalize \n",
+    "\n",
+    "# Matplotlib and associated plotting modules\n",
+    "import matplotlib.cm as cm\n",
+    "import matplotlib.colors as colors\n",
+    "\n",
+    "# import k-means from clustering stage\n",
+    "from sklearn.cluster import KMeans\n",
+    "\n",
+    "# uncomment this line if you haven't completed the Foursquare API lab\n",
+    "# map rendering library\n",
+    "!conda install -c conda-forge folium=0.5.0 --yes \n",
+    "import folium \n",
+    "\n",
+    "# import scraper BeautifulSoup\n",
+    "from bs4 import BeautifulSoup\n",
+    "import requests\n",
+    "\n",
+    "#print commment that requested libararies are imported\n",
+    "print('Libraries imported.')"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "# Download and Explore Dataset"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 7,
+   "metadata": {},
+   "outputs": [
+    {
+     "data": {
+      "text/plain": [
+       "(103, 3)"
+      ]
+     },
+     "execution_count": 7,
+     "metadata": {},
+     "output_type": "execute_result"
+    }
+   ],
+   "source": [
+    "#Build Code to Scrape URL List_of_postal_codes_of_Canada\n",
+    "code_data = 'https://en.wikipedia.org/wiki/List_of_postal_codes_of_Canada:_M'\n",
+    "page = requests.get(code_data, timeout=5)\n",
+    "beau = BeautifulSoup(page.content, 'html.parser')\n",
+    "\n",
+    "#Creating dataframe \n",
+    "code_table = beau.find('table')\n",
+    "code_rows = code_table.findAll('tr')\n",
+    "columns=['Postcode', 'Borough', 'Neighbourhood']\n",
+    "df_data = pd.DataFrame(columns=columns)\n",
+    "\n",
+    "for idx, val in enumerate(code_rows):\n",
+    "    code_cells = val.findAll('td')\n",
+    "    df_list = []\n",
+    "    for idx, val in enumerate(code_cells):\n",
+    "        df_list.append(val.text.rstrip())\n",
+    "    if(int(len(df_list)) > 0):\n",
+    "        if(df_list[1] != \"Not assigned\"):\n",
+    "            if(df_list[2] == \"Not assigned\"):\n",
+    "                df_list[2] = df_list[1]\n",
+    "\n",
+    "            df_dic={columns[0]: df_list[0], columns[1]: df_list[1], columns[2]: df_list[2]}\n",
+    "            df_data = df_data.append(df_dic, ignore_index=True)\n",
+    "\n",
+    "df_data = df_data.groupby('Postcode', as_index=False).agg(lambda x: ', '.join(set(x.dropna())))\n",
+    "#shape to print number of rows of data frame\n",
+    "df_data.shape"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 8,
+   "metadata": {},
+   "outputs": [
+    {
+     "data": {
+      "text/html": [
+       "<div>\n",
+       "<style scoped>\n",
+       "    .dataframe tbody tr th:only-of-type {\n",
+       "        vertical-align: middle;\n",
+       "    }\n",
+       "\n",
+       "    .dataframe tbody tr th {\n",
+       "        vertical-align: top;\n",
+       "    }\n",
+       "\n",
+       "    .dataframe thead th {\n",
+       "        text-align: right;\n",
+       "    }\n",
+       "</style>\n",
+       "<table border=\"1\" class=\"dataframe\">\n",
+       "  <thead>\n",
+       "    <tr style=\"text-align: right;\">\n",
+       "      <th></th>\n",
+       "      <th>Postcode</th>\n",
+       "      <th>Borough</th>\n",
+       "      <th>Neighbourhood</th>\n",
+       "    </tr>\n",
+       "  </thead>\n",
+       "  <tbody>\n",
+       "    <tr>\n",
+       "      <th>0</th>\n",
+       "      <td>M1B</td>\n",
+       "      <td>Scarborough</td>\n",
+       "      <td>Malvern, Rouge</td>\n",
+       "    </tr>\n",
+       "    <tr>\n",
+       "      <th>1</th>\n",
+       "      <td>M1C</td>\n",
+       "      <td>Scarborough</td>\n",
+       "      <td>Highland Creek, Port Union, Rouge Hill</td>\n",
+       "    </tr>\n",
+       "    <tr>\n",
+       "      <th>2</th>\n",
+       "      <td>M1E</td>\n",
+       "      <td>Scarborough</td>\n",
+       "      <td>Guildwood, West Hill, Morningside</td>\n",
+       "    </tr>\n",
+       "    <tr>\n",
+       "      <th>3</th>\n",
+       "      <td>M1G</td>\n",
+       "      <td>Scarborough</td>\n",
+       "      <td>Woburn</td>\n",
+       "    </tr>\n",
+       "    <tr>\n",
+       "      <th>4</th>\n",
+       "      <td>M1H</td>\n",
+       "      <td>Scarborough</td>\n",
+       "      <td>Cedarbrae</td>\n",
+       "    </tr>\n",
+       "    <tr>\n",
+       "      <th>5</th>\n",
+       "      <td>M1J</td>\n",
+       "      <td>Scarborough</td>\n",
+       "      <td>Scarborough Village</td>\n",
+       "    </tr>\n",
+       "    <tr>\n",
+       "      <th>6</th>\n",
+       "      <td>M1K</td>\n",
+       "      <td>Scarborough</td>\n",
+       "      <td>Kennedy Park, Ionview, East Birchmount Park</td>\n",
+       "    </tr>\n",
+       "    <tr>\n",
+       "      <th>7</th>\n",
+       "      <td>M1L</td>\n",
+       "      <td>Scarborough</td>\n",
+       "      <td>Golden Mile, Clairlea, Oakridge</td>\n",
+       "    </tr>\n",
+       "    <tr>\n",
+       "      <th>8</th>\n",
+       "      <td>M1M</td>\n",
+       "      <td>Scarborough</td>\n",
+       "      <td>Cliffside, Scarborough Village West, Cliffcrest</td>\n",
+       "    </tr>\n",
+       "    <tr>\n",
+       "      <th>9</th>\n",
+       "      <td>M1N</td>\n",
+       "      <td>Scarborough</td>\n",
+       "      <td>Birch Cliff, Cliffside West</td>\n",
+       "    </tr>\n",
+       "    <tr>\n",
+       "      <th>10</th>\n",
+       "      <td>M1P</td>\n",
+       "      <td>Scarborough</td>\n",
+       "      <td>Wexford Heights, Scarborough Town Centre, Dors...</td>\n",
+       "    </tr>\n",
+       "    <tr>\n",
+       "      <th>11</th>\n",
+       "      <td>M1R</td>\n",
+       "      <td>Scarborough</td>\n",
+       "      <td>Wexford, Maryvale</td>\n",
+       "    </tr>\n",
+       "  </tbody>\n",
+       "</table>\n",
+       "</div>"
+      ],
+      "text/plain": [
+       "   Postcode      Borough                                      Neighbourhood\n",
+       "0       M1B  Scarborough                                     Malvern, Rouge\n",
+       "1       M1C  Scarborough             Highland Creek, Port Union, Rouge Hill\n",
+       "2       M1E  Scarborough                  Guildwood, West Hill, Morningside\n",
+       "3       M1G  Scarborough                                             Woburn\n",
+       "4       M1H  Scarborough                                          Cedarbrae\n",
+       "5       M1J  Scarborough                                Scarborough Village\n",
+       "6       M1K  Scarborough        Kennedy Park, Ionview, East Birchmount Park\n",
+       "7       M1L  Scarborough                    Golden Mile, Clairlea, Oakridge\n",
+       "8       M1M  Scarborough    Cliffside, Scarborough Village West, Cliffcrest\n",
+       "9       M1N  Scarborough                        Birch Cliff, Cliffside West\n",
+       "10      M1P  Scarborough  Wexford Heights, Scarborough Town Centre, Dors...\n",
+       "11      M1R  Scarborough                                  Wexford, Maryvale"
+      ]
+     },
+     "execution_count": 8,
+     "metadata": {},
+     "output_type": "execute_result"
+    }
+   ],
+   "source": [
+    "#show first 12 lines of data\n",
+    "df_data.head(12)"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 13,
+   "metadata": {},
+   "outputs": [
+    {
+     "data": {
+      "text/html": [
+       "<div>\n",
+       "<style scoped>\n",
+       "    .dataframe tbody tr th:only-of-type {\n",
+       "        vertical-align: middle;\n",
+       "    }\n",
+       "\n",
+       "    .dataframe tbody tr th {\n",
+       "        vertical-align: top;\n",
+       "    }\n",
+       "\n",
+       "    .dataframe thead th {\n",
+       "        text-align: right;\n",
+       "    }\n",
+       "</style>\n",
+       "<table border=\"1\" class=\"dataframe\">\n",
+       "  <thead>\n",
+       "    <tr style=\"text-align: right;\">\n",
+       "      <th></th>\n",
+       "      <th>Postcode</th>\n",
+       "      <th>Borough</th>\n",
+       "      <th>Neighbourhood</th>\n",
+       "      <th>Latitude</th>\n",
+       "      <th>Longitude</th>\n",
+       "    </tr>\n",
+       "  </thead>\n",
+       "  <tbody>\n",
+       "    <tr>\n",
+       "      <th>0</th>\n",
+       "      <td>M4E</td>\n",
+       "      <td>East Toronto</td>\n",
+       "      <td>The Beaches</td>\n",
+       "      <td>43.676357</td>\n",
+       "      <td>-79.293031</td>\n",
+       "    </tr>\n",
+       "    <tr>\n",
+       "      <th>1</th>\n",
+       "      <td>M4K</td>\n",
+       "      <td>East Toronto</td>\n",
+       "      <td>The Danforth West, Riverdale</td>\n",
+       "      <td>43.679557</td>\n",
+       "      <td>-79.352188</td>\n",
+       "    </tr>\n",
+       "    <tr>\n",
+       "      <th>2</th>\n",
+       "      <td>M4L</td>\n",
+       "      <td>East Toronto</td>\n",
+       "      <td>The Beaches West, India Bazaar</td>\n",
+       "      <td>43.668999</td>\n",
+       "      <td>-79.315572</td>\n",
+       "    </tr>\n",
+       "    <tr>\n",
+       "      <th>3</th>\n",
+       "      <td>M4M</td>\n",
+       "      <td>East Toronto</td>\n",
+       "      <td>Studio District</td>\n",
+       "      <td>43.659526</td>\n",
+       "      <td>-79.340923</td>\n",
+       "    </tr>\n",
+       "    <tr>\n",
+       "      <th>4</th>\n",
+       "      <td>M4N</td>\n",
+       "      <td>Central Toronto</td>\n",
+       "      <td>Lawrence Park</td>\n",
+       "      <td>43.728020</td>\n",
+       "      <td>-79.388790</td>\n",
+       "    </tr>\n",
+       "    <tr>\n",
+       "      <th>5</th>\n",
+       "      <td>M4P</td>\n",
+       "      <td>Central Toronto</td>\n",
+       "      <td>Davisville North</td>\n",
+       "      <td>43.712751</td>\n",
+       "      <td>-79.390197</td>\n",
+       "    </tr>\n",
+       "    <tr>\n",
+       "      <th>6</th>\n",
+       "      <td>M4R</td>\n",
+       "      <td>Central Toronto</td>\n",
+       "      <td>North Toronto West</td>\n",
+       "      <td>43.715383</td>\n",
+       "      <td>-79.405678</td>\n",
+       "    </tr>\n",
+       "    <tr>\n",
+       "      <th>7</th>\n",
+       "      <td>M4S</td>\n",
+       "      <td>Central Toronto</td>\n",
+       "      <td>Davisville</td>\n",
+       "      <td>43.704324</td>\n",
+       "      <td>-79.388790</td>\n",
+       "    </tr>\n",
+       "    <tr>\n",
+       "      <th>8</th>\n",
+       "      <td>M4T</td>\n",
+       "      <td>Central Toronto</td>\n",
+       "      <td>Summerhill East, Moore Park</td>\n",
+       "      <td>43.689574</td>\n",
+       "      <td>-79.383160</td>\n",
+       "    </tr>\n",
+       "    <tr>\n",
+       "      <th>9</th>\n",
+       "      <td>M4V</td>\n",
+       "      <td>Central Toronto</td>\n",
+       "      <td>Forest Hill SE, Summerhill West, Deer Park, So...</td>\n",
+       "      <td>43.686412</td>\n",
+       "      <td>-79.400049</td>\n",
+       "    </tr>\n",
+       "    <tr>\n",
+       "      <th>10</th>\n",
+       "      <td>M4W</td>\n",
+       "      <td>Downtown Toronto</td>\n",
+       "      <td>Rosedale</td>\n",
+       "      <td>43.679563</td>\n",
+       "      <td>-79.377529</td>\n",
+       "    </tr>\n",
+       "    <tr>\n",
+       "      <th>11</th>\n",
+       "      <td>M4X</td>\n",
+       "      <td>Downtown Toronto</td>\n",
+       "      <td>Cabbagetown, St. James Town</td>\n",
+       "      <td>43.667967</td>\n",
+       "      <td>-79.367675</td>\n",
+       "    </tr>\n",
+       "  </tbody>\n",
+       "</table>\n",
+       "</div>"
+      ],
+      "text/plain": [
+       "   Postcode           Borough  \\\n",
+       "0       M4E      East Toronto   \n",
+       "1       M4K      East Toronto   \n",
+       "2       M4L      East Toronto   \n",
+       "3       M4M      East Toronto   \n",
+       "4       M4N   Central Toronto   \n",
+       "5       M4P   Central Toronto   \n",
+       "6       M4R   Central Toronto   \n",
+       "7       M4S   Central Toronto   \n",
+       "8       M4T   Central Toronto   \n",
+       "9       M4V   Central Toronto   \n",
+       "10      M4W  Downtown Toronto   \n",
+       "11      M4X  Downtown Toronto   \n",
+       "\n",
+       "                                        Neighbourhood   Latitude  Longitude  \n",
+       "0                                         The Beaches  43.676357 -79.293031  \n",
+       "1                        The Danforth West, Riverdale  43.679557 -79.352188  \n",
+       "2                      The Beaches West, India Bazaar  43.668999 -79.315572  \n",
+       "3                                     Studio District  43.659526 -79.340923  \n",
+       "4                                       Lawrence Park  43.728020 -79.388790  \n",
+       "5                                    Davisville North  43.712751 -79.390197  \n",
+       "6                                  North Toronto West  43.715383 -79.405678  \n",
+       "7                                          Davisville  43.704324 -79.388790  \n",
+       "8                         Summerhill East, Moore Park  43.689574 -79.383160  \n",
+       "9   Forest Hill SE, Summerhill West, Deer Park, So...  43.686412 -79.400049  \n",
+       "10                                           Rosedale  43.679563 -79.377529  \n",
+       "11                        Cabbagetown, St. James Town  43.667967 -79.367675  "
+      ]
+     },
+     "execution_count": 13,
+     "metadata": {},
+     "output_type": "execute_result"
+    }
+   ],
+   "source": [
+    "url=\"http://cocl.us/Geospatial_data/Geospatial_Coordinates.csv\"\n",
+    "coordinates=pd.read_csv(url)\n",
+    "coordinates.columns = ['Postcode', 'Latitude', 'Longitude']\n",
+    "dftor = pd.merge(df_data,coordinates, on='Postcode')\n",
+    "\n",
+    "dftor = dftor[dftor['Borough'].str.contains('Toronto')].reset_index(drop=True)\n",
+    "dftor.head(12)"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 14,
+   "metadata": {},
+   "outputs": [
+    {
+     "name": "stdout",
+     "output_type": "stream",
+     "text": [
+      "The geograpical coordinate of Toronto, Canada are 43.653963, -79.387207.\n"
+     ]
+    },
+    {
+     "name": "stderr",
+     "output_type": "stream",
+     "text": [
+      "/anaconda3/lib/python3.7/site-packages/geopy/geocoders/osm.py:143: UserWarning: Using Nominatim with the default \"geopy/1.17.0\" `user_agent` is strongly discouraged, as it violates Nominatim's ToS https://operations.osmfoundation.org/policies/nominatim/ and may possibly cause 403 and 429 HTTP errors. Please specify a custom `user_agent` with `Nominatim(user_agent=\"my-application\")` or by overriding the default `user_agent`: `geopy.geocoders.options.default_user_agent = \"my-application\"`. In geopy 2.0 this will become an exception.\n",
+      "  UserWarning\n"
+     ]
+    }
+   ],
+   "source": [
+    "address = 'Toronto, Canada'\n",
+    "\n",
+    "geolocator = Nominatim()\n",
+    "location = geolocator.geocode(address)\n",
+    "latitude = location.latitude\n",
+    "longitude = location.longitude\n",
+    "print('The geograpical coordinate of Toronto, Canada are {}, {}.'.format(latitude, longitude))"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 16,
+   "metadata": {},
+   "outputs": [
+    {
+     "data": {
+      "text/html": [
+       "<div style=\"width:100%;\"><div style=\"position:relative;width:100%;height:0;padding-bottom:60%;\"><iframe src=\"data:text/html;charset=utf-8;base64,PCFET0NUWVBFIGh0bWw+CjxoZWFkPiAgICAKICAgIDxtZXRhIGh0dHAtZXF1aXY9ImNvbnRlbnQtdHlwZSIgY29udGVudD0idGV4dC9odG1sOyBjaGFyc2V0PVVURi04IiAvPgogICAgPHNjcmlwdD5MX1BSRUZFUl9DQU5WQVMgPSBmYWxzZTsgTF9OT19UT1VDSCA9IGZhbHNlOyBMX0RJU0FCTEVfM0QgPSBmYWxzZTs8L3NjcmlwdD4KICAgIDxzY3JpcHQgc3JjPSJodHRwczovL2Nkbi5qc2RlbGl2ci5uZXQvbnBtL2xlYWZsZXRAMS4yLjAvZGlzdC9sZWFmbGV0LmpzIj48L3NjcmlwdD4KICAgIDxzY3JpcHQgc3JjPSJodHRwczovL2FqYXguZ29vZ2xlYXBpcy5jb20vYWpheC9saWJzL2pxdWVyeS8xLjExLjEvanF1ZXJ5Lm1pbi5qcyI+PC9zY3JpcHQ+CiAgICA8c2NyaXB0IHNyYz0iaHR0cHM6Ly9tYXhjZG4uYm9vdHN0cmFwY2RuLmNvbS9ib290c3RyYXAvMy4yLjAvanMvYm9vdHN0cmFwLm1pbi5qcyI+PC9zY3JpcHQ+CiAgICA8c2NyaXB0IHNyYz0iaHR0cHM6Ly9jZG5qcy5jbG91ZGZsYXJlLmNvbS9hamF4L2xpYnMvTGVhZmxldC5hd2Vzb21lLW1hcmtlcnMvMi4wLjIvbGVhZmxldC5hd2Vzb21lLW1hcmtlcnMuanMiPjwvc2NyaXB0PgogICAgPGxpbmsgcmVsPSJzdHlsZXNoZWV0IiBocmVmPSJodHRwczovL2Nkbi5qc2RlbGl2ci5uZXQvbnBtL2xlYWZsZXRAMS4yLjAvZGlzdC9sZWFmbGV0LmNzcyIvPgogICAgPGxpbmsgcmVsPSJzdHlsZXNoZWV0IiBocmVmPSJodHRwczovL21heGNkbi5ib290c3RyYXBjZG4uY29tL2Jvb3RzdHJhcC8zLjIuMC9jc3MvYm9vdHN0cmFwLm1pbi5jc3MiLz4KICAgIDxsaW5rIHJlbD0ic3R5bGVzaGVldCIgaHJlZj0iaHR0cHM6Ly9tYXhjZG4uYm9vdHN0cmFwY2RuLmNvbS9ib290c3RyYXAvMy4yLjAvY3NzL2Jvb3RzdHJhcC10aGVtZS5taW4uY3NzIi8+CiAgICA8bGluayByZWw9InN0eWxlc2hlZXQiIGhyZWY9Imh0dHBzOi8vbWF4Y2RuLmJvb3RzdHJhcGNkbi5jb20vZm9udC1hd2Vzb21lLzQuNi4zL2Nzcy9mb250LWF3ZXNvbWUubWluLmNzcyIvPgogICAgPGxpbmsgcmVsPSJzdHlsZXNoZWV0IiBocmVmPSJodHRwczovL2NkbmpzLmNsb3VkZmxhcmUuY29tL2FqYXgvbGlicy9MZWFmbGV0LmF3ZXNvbWUtbWFya2Vycy8yLjAuMi9sZWFmbGV0LmF3ZXNvbWUtbWFya2Vycy5jc3MiLz4KICAgIDxsaW5rIHJlbD0ic3R5bGVzaGVldCIgaHJlZj0iaHR0cHM6Ly9yYXdnaXQuY29tL3B5dGhvbi12aXN1YWxpemF0aW9uL2ZvbGl1bS9tYXN0ZXIvZm9saXVtL3RlbXBsYXRlcy9sZWFmbGV0LmF3ZXNvbWUucm90YXRlLmNzcyIvPgogICAgPHN0eWxlPmh0bWwsIGJvZHkge3dpZHRoOiAxMDAlO2hlaWdodDogMTAwJTttYXJnaW46IDA7cGFkZGluZzogMDt9PC9zdHlsZT4KICAgIDxzdHlsZT4jbWFwIHtwb3NpdGlvbjphYnNvbHV0ZTt0b3A6MDtib3R0b206MDtyaWdodDowO2xlZnQ6MDt9PC9zdHlsZT4KICAgIAogICAgICAgICAgICA8c3R5bGU+ICNtYXBfYWY4NjE0YmZiY2VjNGJjYTkzMzY4YmMxNDJjZTNhNzQgewogICAgICAgICAgICAgICAgcG9zaXRpb24gOiByZWxhdGl2ZTsKICAgICAgICAgICAgICAgIHdpZHRoIDogMTAwLjAlOwogICAgICAgICAgICAgICAgaGVpZ2h0OiAxMDAuMCU7CiAgICAgICAgICAgICAgICBsZWZ0OiAwLjAlOwogICAgICAgICAgICAgICAgdG9wOiAwLjAlOwogICAgICAgICAgICAgICAgfQogICAgICAgICAgICA8L3N0eWxlPgogICAgICAgIAo8L2hlYWQ+Cjxib2R5PiAgICAKICAgIAogICAgICAgICAgICA8ZGl2IGNsYXNzPSJmb2xpdW0tbWFwIiBpZD0ibWFwX2FmODYxNGJmYmNlYzRiY2E5MzM2OGJjMTQyY2UzYTc0IiA+PC9kaXY+CiAgICAgICAgCjwvYm9keT4KPHNjcmlwdD4gICAgCiAgICAKCiAgICAgICAgICAgIAogICAgICAgICAgICAgICAgdmFyIGJvdW5kcyA9IG51bGw7CiAgICAgICAgICAgIAoKICAgICAgICAgICAgdmFyIG1hcF9hZjg2MTRiZmJjZWM0YmNhOTMzNjhiYzE0MmNlM2E3NCA9IEwubWFwKAogICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgJ21hcF9hZjg2MTRiZmJjZWM0YmNhOTMzNjhiYzE0MmNlM2E3NCcsCiAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICB7Y2VudGVyOiBbNDMuNjUzOTYzLC03OS4zODcyMDddLAogICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgem9vbTogMTAsCiAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICBtYXhCb3VuZHM6IGJvdW5kcywKICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgIGxheWVyczogW10sCiAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICB3b3JsZENvcHlKdW1wOiBmYWxzZSwKICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgIGNyczogTC5DUlMuRVBTRzM4NTcKICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgfSk7CiAgICAgICAgICAgIAogICAgICAgIAogICAgCiAgICAgICAgICAgIHZhciB0aWxlX2xheWVyXzBkMTYxNTA5NjVjZDQ4MjU5MDA2NTFkMjUwMGQ2NmM4ID0gTC50aWxlTGF5ZXIoCiAgICAgICAgICAgICAgICAnaHR0cHM6Ly97c30udGlsZS5vcGVuc3RyZWV0bWFwLm9yZy97en0ve3h9L3t5fS5wbmcnLAogICAgICAgICAgICAgICAgewogICJhdHRyaWJ1dGlvbiI6IG51bGwsCiAgImRldGVjdFJldGluYSI6IGZhbHNlLAogICJtYXhab29tIjogMTgsCiAgIm1pblpvb20iOiAxLAogICJub1dyYXAiOiBmYWxzZSwKICAic3ViZG9tYWlucyI6ICJhYmMiCn0KICAgICAgICAgICAgICAgICkuYWRkVG8obWFwX2FmODYxNGJmYmNlYzRiY2E5MzM2OGJjMTQyY2UzYTc0KTsKICAgICAgICAKICAgIAogICAgICAgICAgICB2YXIgY2lyY2xlX21hcmtlcl9jOTdiNTViNTE0NjM0NzI4OTEyMjFkNWZmZmZlNGU2MyA9IEwuY2lyY2xlTWFya2VyKAogICAgICAgICAgICAgICAgWzQzLjY3NjM1NzM5OTk5OTk5LC03OS4yOTMwMzEyXSwKICAgICAgICAgICAgICAgIHsKICAiYnViYmxpbmdNb3VzZUV2ZW50cyI6IHRydWUsCiAgImNvbG9yIjogImJsdWUiLAogICJkYXNoQXJyYXkiOiBudWxsLAogICJkYXNoT2Zmc2V0IjogbnVsbCwKICAiZmlsbCI6IHRydWUsCiAgImZpbGxDb2xvciI6ICIjMzE4NmNjIiwKICAiZmlsbE9wYWNpdHkiOiAwLjcsCiAgImZpbGxSdWxlIjogImV2ZW5vZGQiLAogICJsaW5lQ2FwIjogInJvdW5kIiwKICAibGluZUpvaW4iOiAicm91bmQiLAogICJvcGFjaXR5IjogMS4wLAogICJyYWRpdXMiOiA1LAogICJzdHJva2UiOiB0cnVlLAogICJ3ZWlnaHQiOiAzCn0KICAgICAgICAgICAgICAgICkuYWRkVG8obWFwX2FmODYxNGJmYmNlYzRiY2E5MzM2OGJjMTQyY2UzYTc0KTsKICAgICAgICAgICAgCiAgICAKICAgICAgICAgICAgdmFyIHBvcHVwX2Y5YzkxYTE0NmJmOTQ0ZGE5NGFhYmM5NTE5ZTRhZTE1ID0gTC5wb3B1cCh7bWF4V2lkdGg6ICczMDAnfSk7CgogICAgICAgICAgICAKICAgICAgICAgICAgICAgIHZhciBodG1sXzg2NGU4MGI2NmEzMTRkODQ4MDlkYWU1MjQ2YTM2NDk2ID0gJCgnPGRpdiBpZD0iaHRtbF84NjRlODBiNjZhMzE0ZDg0ODA5ZGFlNTI0NmEzNjQ5NiIgc3R5bGU9IndpZHRoOiAxMDAuMCU7IGhlaWdodDogMTAwLjAlOyI+VGhlIEJlYWNoZXMsIEVhc3QgVG9yb250bzwvZGl2PicpWzBdOwogICAgICAgICAgICAgICAgcG9wdXBfZjljOTFhMTQ2YmY5NDRkYTk0YWFiYzk1MTllNGFlMTUuc2V0Q29udGVudChodG1sXzg2NGU4MGI2NmEzMTRkODQ4MDlkYWU1MjQ2YTM2NDk2KTsKICAgICAgICAgICAgCgogICAgICAgICAgICBjaXJjbGVfbWFya2VyX2M5N2I1NWI1MTQ2MzQ3Mjg5MTIyMWQ1ZmZmZmU0ZTYzLmJpbmRQb3B1cChwb3B1cF9mOWM5MWExNDZiZjk0NGRhOTRhYWJjOTUxOWU0YWUxNSk7CgogICAgICAgICAgICAKICAgICAgICAKICAgIAogICAgICAgICAgICB2YXIgY2lyY2xlX21hcmtlcl8xMjAxMjBjNjc0MTU0NTJhYTMxMDAxM2JiM2U5ZmQ1MCA9IEwuY2lyY2xlTWFya2VyKAogICAgICAgICAgICAgICAgWzQzLjY3OTU1NzEsLTc5LjM1MjE4OF0sCiAgICAgICAgICAgICAgICB7CiAgImJ1YmJsaW5nTW91c2VFdmVudHMiOiB0cnVlLAogICJjb2xvciI6ICJibHVlIiwKICAiZGFzaEFycmF5IjogbnVsbCwKICAiZGFzaE9mZnNldCI6IG51bGwsCiAgImZpbGwiOiB0cnVlLAogICJmaWxsQ29sb3IiOiAiIzMxODZjYyIsCiAgImZpbGxPcGFjaXR5IjogMC43LAogICJmaWxsUnVsZSI6ICJldmVub2RkIiwKICAibGluZUNhcCI6ICJyb3VuZCIsCiAgImxpbmVKb2luIjogInJvdW5kIiwKICAib3BhY2l0eSI6IDEuMCwKICAicmFkaXVzIjogNSwKICAic3Ryb2tlIjogdHJ1ZSwKICAid2VpZ2h0IjogMwp9CiAgICAgICAgICAgICAgICApLmFkZFRvKG1hcF9hZjg2MTRiZmJjZWM0YmNhOTMzNjhiYzE0MmNlM2E3NCk7CiAgICAgICAgICAgIAogICAgCiAgICAgICAgICAgIHZhciBwb3B1cF9iOWNhY2MwODZlMjc0ZTFiYjYzNWE3ZmMzYzhhNjA3YSA9IEwucG9wdXAoe21heFdpZHRoOiAnMzAwJ30pOwoKICAgICAgICAgICAgCiAgICAgICAgICAgICAgICB2YXIgaHRtbF83MTYxODY2MDE1NDY0Yzc0OGIyNjQ5MDc0MzI5ODRlMyA9ICQoJzxkaXYgaWQ9Imh0bWxfNzE2MTg2NjAxNTQ2NGM3NDhiMjY0OTA3NDMyOTg0ZTMiIHN0eWxlPSJ3aWR0aDogMTAwLjAlOyBoZWlnaHQ6IDEwMC4wJTsiPlRoZSBEYW5mb3J0aCBXZXN0LCBSaXZlcmRhbGUsIEVhc3QgVG9yb250bzwvZGl2PicpWzBdOwogICAgICAgICAgICAgICAgcG9wdXBfYjljYWNjMDg2ZTI3NGUxYmI2MzVhN2ZjM2M4YTYwN2Euc2V0Q29udGVudChodG1sXzcxNjE4NjYwMTU0NjRjNzQ4YjI2NDkwNzQzMjk4NGUzKTsKICAgICAgICAgICAgCgogICAgICAgICAgICBjaXJjbGVfbWFya2VyXzEyMDEyMGM2NzQxNTQ1MmFhMzEwMDEzYmIzZTlmZDUwLmJpbmRQb3B1cChwb3B1cF9iOWNhY2MwODZlMjc0ZTFiYjYzNWE3ZmMzYzhhNjA3YSk7CgogICAgICAgICAgICAKICAgICAgICAKICAgIAogICAgICAgICAgICB2YXIgY2lyY2xlX21hcmtlcl81M2Q4YTVhODQ4M2Q0MDU1OTZlYzcwMjc0NjhmNGQxZSA9IEwuY2lyY2xlTWFya2VyKAogICAgICAgICAgICAgICAgWzQzLjY2ODk5ODUsLTc5LjMxNTU3MTU5OTk5OTk4XSwKICAgICAgICAgICAgICAgIHsKICAiYnViYmxpbmdNb3VzZUV2ZW50cyI6IHRydWUsCiAgImNvbG9yIjogImJsdWUiLAogICJkYXNoQXJyYXkiOiBudWxsLAogICJkYXNoT2Zmc2V0IjogbnVsbCwKICAiZmlsbCI6IHRydWUsCiAgImZpbGxDb2xvciI6ICIjMzE4NmNjIiwKICAiZmlsbE9wYWNpdHkiOiAwLjcsCiAgImZpbGxSdWxlIjogImV2ZW5vZGQiLAogICJsaW5lQ2FwIjogInJvdW5kIiwKICAibGluZUpvaW4iOiAicm91bmQiLAogICJvcGFjaXR5IjogMS4wLAogICJyYWRpdXMiOiA1LAogICJzdHJva2UiOiB0cnVlLAogICJ3ZWlnaHQiOiAzCn0KICAgICAgICAgICAgICAgICkuYWRkVG8obWFwX2FmODYxNGJmYmNlYzRiY2E5MzM2OGJjMTQyY2UzYTc0KTsKICAgICAgICAgICAgCiAgICAKICAgICAgICAgICAgdmFyIHBvcHVwXzRlMzkyMDNhZDY4YjRhYTJhZmJhNmY0YzI1NzhiN2EzID0gTC5wb3B1cCh7bWF4V2lkdGg6ICczMDAnfSk7CgogICAgICAgICAgICAKICAgICAgICAgICAgICAgIHZhciBodG1sX2FjZGZhMDAyNjkyZjRhNjE4ZjZkMjcwNGNiZTEwYzNjID0gJCgnPGRpdiBpZD0iaHRtbF9hY2RmYTAwMjY5MmY0YTYxOGY2ZDI3MDRjYmUxMGMzYyIgc3R5bGU9IndpZHRoOiAxMDAuMCU7IGhlaWdodDogMTAwLjAlOyI+VGhlIEJlYWNoZXMgV2VzdCwgSW5kaWEgQmF6YWFyLCBFYXN0IFRvcm9udG88L2Rpdj4nKVswXTsKICAgICAgICAgICAgICAgIHBvcHVwXzRlMzkyMDNhZDY4YjRhYTJhZmJhNmY0YzI1NzhiN2EzLnNldENvbnRlbnQoaHRtbF9hY2RmYTAwMjY5MmY0YTYxOGY2ZDI3MDRjYmUxMGMzYyk7CiAgICAgICAgICAgIAoKICAgICAgICAgICAgY2lyY2xlX21hcmtlcl81M2Q4YTVhODQ4M2Q0MDU1OTZlYzcwMjc0NjhmNGQxZS5iaW5kUG9wdXAocG9wdXBfNGUzOTIwM2FkNjhiNGFhMmFmYmE2ZjRjMjU3OGI3YTMpOwoKICAgICAgICAgICAgCiAgICAgICAgCiAgICAKICAgICAgICAgICAgdmFyIGNpcmNsZV9tYXJrZXJfN2QxMTA1M2Q3NjRjNDU3OWI0ZDE3MjMxMTFiZTEzN2UgPSBMLmNpcmNsZU1hcmtlcigKICAgICAgICAgICAgICAgIFs0My42NTk1MjU1LC03OS4zNDA5MjNdLAogICAgICAgICAgICAgICAgewogICJidWJibGluZ01vdXNlRXZlbnRzIjogdHJ1ZSwKICAiY29sb3IiOiAiYmx1ZSIsCiAgImRhc2hBcnJheSI6IG51bGwsCiAgImRhc2hPZmZzZXQiOiBudWxsLAogICJmaWxsIjogdHJ1ZSwKICAiZmlsbENvbG9yIjogIiMzMTg2Y2MiLAogICJmaWxsT3BhY2l0eSI6IDAuNywKICAiZmlsbFJ1bGUiOiAiZXZlbm9kZCIsCiAgImxpbmVDYXAiOiAicm91bmQiLAogICJsaW5lSm9pbiI6ICJyb3VuZCIsCiAgIm9wYWNpdHkiOiAxLjAsCiAgInJhZGl1cyI6IDUsCiAgInN0cm9rZSI6IHRydWUsCiAgIndlaWdodCI6IDMKfQogICAgICAgICAgICAgICAgKS5hZGRUbyhtYXBfYWY4NjE0YmZiY2VjNGJjYTkzMzY4YmMxNDJjZTNhNzQpOwogICAgICAgICAgICAKICAgIAogICAgICAgICAgICB2YXIgcG9wdXBfZjFjNmU1ODU0YmJlNGUxZjgyMGU2ODFkYWJjZjY3YzIgPSBMLnBvcHVwKHttYXhXaWR0aDogJzMwMCd9KTsKCiAgICAgICAgICAgIAogICAgICAgICAgICAgICAgdmFyIGh0bWxfNDYwZjAzYWU0MDg1NDU5MmE2YWQ0NzhhNTQ3MzQyMzMgPSAkKCc8ZGl2IGlkPSJodG1sXzQ2MGYwM2FlNDA4NTQ1OTJhNmFkNDc4YTU0NzM0MjMzIiBzdHlsZT0id2lkdGg6IDEwMC4wJTsgaGVpZ2h0OiAxMDAuMCU7Ij5TdHVkaW8gRGlzdHJpY3QsIEVhc3QgVG9yb250bzwvZGl2PicpWzBdOwogICAgICAgICAgICAgICAgcG9wdXBfZjFjNmU1ODU0YmJlNGUxZjgyMGU2ODFkYWJjZjY3YzIuc2V0Q29udGVudChodG1sXzQ2MGYwM2FlNDA4NTQ1OTJhNmFkNDc4YTU0NzM0MjMzKTsKICAgICAgICAgICAgCgogICAgICAgICAgICBjaXJjbGVfbWFya2VyXzdkMTEwNTNkNzY0YzQ1NzliNGQxNzIzMTExYmUxMzdlLmJpbmRQb3B1cChwb3B1cF9mMWM2ZTU4NTRiYmU0ZTFmODIwZTY4MWRhYmNmNjdjMik7CgogICAgICAgICAgICAKICAgICAgICAKICAgIAogICAgICAgICAgICB2YXIgY2lyY2xlX21hcmtlcl9kNTBjYWVhMjE4YTU0MjcxYjFmOTE0ZmNmOTg4NzNhNSA9IEwuY2lyY2xlTWFya2VyKAogICAgICAgICAgICAgICAgWzQzLjcyODAyMDUsLTc5LjM4ODc5MDFdLAogICAgICAgICAgICAgICAgewogICJidWJibGluZ01vdXNlRXZlbnRzIjogdHJ1ZSwKICAiY29sb3IiOiAiYmx1ZSIsCiAgImRhc2hBcnJheSI6IG51bGwsCiAgImRhc2hPZmZzZXQiOiBudWxsLAogICJmaWxsIjogdHJ1ZSwKICAiZmlsbENvbG9yIjogIiMzMTg2Y2MiLAogICJmaWxsT3BhY2l0eSI6IDAuNywKICAiZmlsbFJ1bGUiOiAiZXZlbm9kZCIsCiAgImxpbmVDYXAiOiAicm91bmQiLAogICJsaW5lSm9pbiI6ICJyb3VuZCIsCiAgIm9wYWNpdHkiOiAxLjAsCiAgInJhZGl1cyI6IDUsCiAgInN0cm9rZSI6IHRydWUsCiAgIndlaWdodCI6IDMKfQogICAgICAgICAgICAgICAgKS5hZGRUbyhtYXBfYWY4NjE0YmZiY2VjNGJjYTkzMzY4YmMxNDJjZTNhNzQpOwogICAgICAgICAgICAKICAgIAogICAgICAgICAgICB2YXIgcG9wdXBfMzhhNWQ3ZDg1MTExNDAyYmIwYzgxOGU3MzBlNGU2YTYgPSBMLnBvcHVwKHttYXhXaWR0aDogJzMwMCd9KTsKCiAgICAgICAgICAgIAogICAgICAgICAgICAgICAgdmFyIGh0bWxfMjZiNmVlYWZhZmU0NGEwMTlkNTBlZWM5N2E1NTIzNWQgPSAkKCc8ZGl2IGlkPSJodG1sXzI2YjZlZWFmYWZlNDRhMDE5ZDUwZWVjOTdhNTUyMzVkIiBzdHlsZT0id2lkdGg6IDEwMC4wJTsgaGVpZ2h0OiAxMDAuMCU7Ij5MYXdyZW5jZSBQYXJrLCBDZW50cmFsIFRvcm9udG88L2Rpdj4nKVswXTsKICAgICAgICAgICAgICAgIHBvcHVwXzM4YTVkN2Q4NTExMTQwMmJiMGM4MThlNzMwZTRlNmE2LnNldENvbnRlbnQoaHRtbF8yNmI2ZWVhZmFmZTQ0YTAxOWQ1MGVlYzk3YTU1MjM1ZCk7CiAgICAgICAgICAgIAoKICAgICAgICAgICAgY2lyY2xlX21hcmtlcl9kNTBjYWVhMjE4YTU0MjcxYjFmOTE0ZmNmOTg4NzNhNS5iaW5kUG9wdXAocG9wdXBfMzhhNWQ3ZDg1MTExNDAyYmIwYzgxOGU3MzBlNGU2YTYpOwoKICAgICAgICAgICAgCiAgICAgICAgCiAgICAKICAgICAgICAgICAgdmFyIGNpcmNsZV9tYXJrZXJfNDI2NmMyNzg3YzM3NDg1N2EzMTBjZmM0NmNkY2QxOTggPSBMLmNpcmNsZU1hcmtlcigKICAgICAgICAgICAgICAgIFs0My43MTI3NTExLC03OS4zOTAxOTc1XSwKICAgICAgICAgICAgICAgIHsKICAiYnViYmxpbmdNb3VzZUV2ZW50cyI6IHRydWUsCiAgImNvbG9yIjogImJsdWUiLAogICJkYXNoQXJyYXkiOiBudWxsLAogICJkYXNoT2Zmc2V0IjogbnVsbCwKICAiZmlsbCI6IHRydWUsCiAgImZpbGxDb2xvciI6ICIjMzE4NmNjIiwKICAiZmlsbE9wYWNpdHkiOiAwLjcsCiAgImZpbGxSdWxlIjogImV2ZW5vZGQiLAogICJsaW5lQ2FwIjogInJvdW5kIiwKICAibGluZUpvaW4iOiAicm91bmQiLAogICJvcGFjaXR5IjogMS4wLAogICJyYWRpdXMiOiA1LAogICJzdHJva2UiOiB0cnVlLAogICJ3ZWlnaHQiOiAzCn0KICAgICAgICAgICAgICAgICkuYWRkVG8obWFwX2FmODYxNGJmYmNlYzRiY2E5MzM2OGJjMTQyY2UzYTc0KTsKICAgICAgICAgICAgCiAgICAKICAgICAgICAgICAgdmFyIHBvcHVwXzUzNjM4M2RhYTU1NzQxZDFiMjY1MzE5OGZhNjc2Y2IwID0gTC5wb3B1cCh7bWF4V2lkdGg6ICczMDAnfSk7CgogICAgICAgICAgICAKICAgICAgICAgICAgICAgIHZhciBodG1sXzRlNzY0MzgwMGE5ZDRhZTQ4NTM1ODM2Nzg4MzQ0MDc0ID0gJCgnPGRpdiBpZD0iaHRtbF80ZTc2NDM4MDBhOWQ0YWU0ODUzNTgzNjc4ODM0NDA3NCIgc3R5bGU9IndpZHRoOiAxMDAuMCU7IGhlaWdodDogMTAwLjAlOyI+RGF2aXN2aWxsZSBOb3J0aCwgQ2VudHJhbCBUb3JvbnRvPC9kaXY+JylbMF07CiAgICAgICAgICAgICAgICBwb3B1cF81MzYzODNkYWE1NTc0MWQxYjI2NTMxOThmYTY3NmNiMC5zZXRDb250ZW50KGh0bWxfNGU3NjQzODAwYTlkNGFlNDg1MzU4MzY3ODgzNDQwNzQpOwogICAgICAgICAgICAKCiAgICAgICAgICAgIGNpcmNsZV9tYXJrZXJfNDI2NmMyNzg3YzM3NDg1N2EzMTBjZmM0NmNkY2QxOTguYmluZFBvcHVwKHBvcHVwXzUzNjM4M2RhYTU1NzQxZDFiMjY1MzE5OGZhNjc2Y2IwKTsKCiAgICAgICAgICAgIAogICAgICAgIAogICAgCiAgICAgICAgICAgIHZhciBjaXJjbGVfbWFya2VyXzcyMjNhYWRhNTk3MzQyZDViZTEzN2NjODk0ODEyNWRkID0gTC5jaXJjbGVNYXJrZXIoCiAgICAgICAgICAgICAgICBbNDMuNzE1MzgzNCwtNzkuNDA1Njc4NDAwMDAwMDFdLAogICAgICAgICAgICAgICAgewogICJidWJibGluZ01vdXNlRXZlbnRzIjogdHJ1ZSwKICAiY29sb3IiOiAiYmx1ZSIsCiAgImRhc2hBcnJheSI6IG51bGwsCiAgImRhc2hPZmZzZXQiOiBudWxsLAogICJmaWxsIjogdHJ1ZSwKICAiZmlsbENvbG9yIjogIiMzMTg2Y2MiLAogICJmaWxsT3BhY2l0eSI6IDAuNywKICAiZmlsbFJ1bGUiOiAiZXZlbm9kZCIsCiAgImxpbmVDYXAiOiAicm91bmQiLAogICJsaW5lSm9pbiI6ICJyb3VuZCIsCiAgIm9wYWNpdHkiOiAxLjAsCiAgInJhZGl1cyI6IDUsCiAgInN0cm9rZSI6IHRydWUsCiAgIndlaWdodCI6IDMKfQogICAgICAgICAgICAgICAgKS5hZGRUbyhtYXBfYWY4NjE0YmZiY2VjNGJjYTkzMzY4YmMxNDJjZTNhNzQpOwogICAgICAgICAgICAKICAgIAogICAgICAgICAgICB2YXIgcG9wdXBfOTAwMmFkMzNiYjFlNDk4OGFlYzAwODA0MDdhZTEwYjcgPSBMLnBvcHVwKHttYXhXaWR0aDogJzMwMCd9KTsKCiAgICAgICAgICAgIAogICAgICAgICAgICAgICAgdmFyIGh0bWxfNzQ5ODI1YmM3YTFkNDcxZmJmOGNjNzFlYTk2ODc2NDMgPSAkKCc8ZGl2IGlkPSJodG1sXzc0OTgyNWJjN2ExZDQ3MWZiZjhjYzcxZWE5Njg3NjQzIiBzdHlsZT0id2lkdGg6IDEwMC4wJTsgaGVpZ2h0OiAxMDAuMCU7Ij5Ob3J0aCBUb3JvbnRvIFdlc3QsIENlbnRyYWwgVG9yb250bzwvZGl2PicpWzBdOwogICAgICAgICAgICAgICAgcG9wdXBfOTAwMmFkMzNiYjFlNDk4OGFlYzAwODA0MDdhZTEwYjcuc2V0Q29udGVudChodG1sXzc0OTgyNWJjN2ExZDQ3MWZiZjhjYzcxZWE5Njg3NjQzKTsKICAgICAgICAgICAgCgogICAgICAgICAgICBjaXJjbGVfbWFya2VyXzcyMjNhYWRhNTk3MzQyZDViZTEzN2NjODk0ODEyNWRkLmJpbmRQb3B1cChwb3B1cF85MDAyYWQzM2JiMWU0OTg4YWVjMDA4MDQwN2FlMTBiNyk7CgogICAgICAgICAgICAKICAgICAgICAKICAgIAogICAgICAgICAgICB2YXIgY2lyY2xlX21hcmtlcl9mMThkNTE1NjdhOWI0NTAwYmZmMjI0NmZjZDEzYjQ0ZSA9IEwuY2lyY2xlTWFya2VyKAogICAgICAgICAgICAgICAgWzQzLjcwNDMyNDQsLTc5LjM4ODc5MDFdLAogICAgICAgICAgICAgICAgewogICJidWJibGluZ01vdXNlRXZlbnRzIjogdHJ1ZSwKICAiY29sb3IiOiAiYmx1ZSIsCiAgImRhc2hBcnJheSI6IG51bGwsCiAgImRhc2hPZmZzZXQiOiBudWxsLAogICJmaWxsIjogdHJ1ZSwKICAiZmlsbENvbG9yIjogIiMzMTg2Y2MiLAogICJmaWxsT3BhY2l0eSI6IDAuNywKICAiZmlsbFJ1bGUiOiAiZXZlbm9kZCIsCiAgImxpbmVDYXAiOiAicm91bmQiLAogICJsaW5lSm9pbiI6ICJyb3VuZCIsCiAgIm9wYWNpdHkiOiAxLjAsCiAgInJhZGl1cyI6IDUsCiAgInN0cm9rZSI6IHRydWUsCiAgIndlaWdodCI6IDMKfQogICAgICAgICAgICAgICAgKS5hZGRUbyhtYXBfYWY4NjE0YmZiY2VjNGJjYTkzMzY4YmMxNDJjZTNhNzQpOwogICAgICAgICAgICAKICAgIAogICAgICAgICAgICB2YXIgcG9wdXBfZTVhNzk1OTViZTg3NDkxNDlhNDJiODM0MjhlMjQ0N2MgPSBMLnBvcHVwKHttYXhXaWR0aDogJzMwMCd9KTsKCiAgICAgICAgICAgIAogICAgICAgICAgICAgICAgdmFyIGh0bWxfZGE3YzQ5NWQxODI1NGYwMWI5NGQ0OTI5Y2Y1ODMyNzMgPSAkKCc8ZGl2IGlkPSJodG1sX2RhN2M0OTVkMTgyNTRmMDFiOTRkNDkyOWNmNTgzMjczIiBzdHlsZT0id2lkdGg6IDEwMC4wJTsgaGVpZ2h0OiAxMDAuMCU7Ij5EYXZpc3ZpbGxlLCBDZW50cmFsIFRvcm9udG88L2Rpdj4nKVswXTsKICAgICAgICAgICAgICAgIHBvcHVwX2U1YTc5NTk1YmU4NzQ5MTQ5YTQyYjgzNDI4ZTI0NDdjLnNldENvbnRlbnQoaHRtbF9kYTdjNDk1ZDE4MjU0ZjAxYjk0ZDQ5MjljZjU4MzI3Myk7CiAgICAgICAgICAgIAoKICAgICAgICAgICAgY2lyY2xlX21hcmtlcl9mMThkNTE1NjdhOWI0NTAwYmZmMjI0NmZjZDEzYjQ0ZS5iaW5kUG9wdXAocG9wdXBfZTVhNzk1OTViZTg3NDkxNDlhNDJiODM0MjhlMjQ0N2MpOwoKICAgICAgICAgICAgCiAgICAgICAgCiAgICAKICAgICAgICAgICAgdmFyIGNpcmNsZV9tYXJrZXJfYTMyNjJmMTNjN2MxNDcyZjhmZTQxY2I1ZjlkOGRiYzUgPSBMLmNpcmNsZU1hcmtlcigKICAgICAgICAgICAgICAgIFs0My42ODk1NzQzLC03OS4zODMxNTk5MDAwMDAwMV0sCiAgICAgICAgICAgICAgICB7CiAgImJ1YmJsaW5nTW91c2VFdmVudHMiOiB0cnVlLAogICJjb2xvciI6ICJibHVlIiwKICAiZGFzaEFycmF5IjogbnVsbCwKICAiZGFzaE9mZnNldCI6IG51bGwsCiAgImZpbGwiOiB0cnVlLAogICJmaWxsQ29sb3IiOiAiIzMxODZjYyIsCiAgImZpbGxPcGFjaXR5IjogMC43LAogICJmaWxsUnVsZSI6ICJldmVub2RkIiwKICAibGluZUNhcCI6ICJyb3VuZCIsCiAgImxpbmVKb2luIjogInJvdW5kIiwKICAib3BhY2l0eSI6IDEuMCwKICAicmFkaXVzIjogNSwKICAic3Ryb2tlIjogdHJ1ZSwKICAid2VpZ2h0IjogMwp9CiAgICAgICAgICAgICAgICApLmFkZFRvKG1hcF9hZjg2MTRiZmJjZWM0YmNhOTMzNjhiYzE0MmNlM2E3NCk7CiAgICAgICAgICAgIAogICAgCiAgICAgICAgICAgIHZhciBwb3B1cF80ZmQ3ODUxOTUzZjA0NTY4ODNiZWQ4ODQ5YjY2NTdiMSA9IEwucG9wdXAoe21heFdpZHRoOiAnMzAwJ30pOwoKICAgICAgICAgICAgCiAgICAgICAgICAgICAgICB2YXIgaHRtbF9lNzIxZWVmNDZhMDc0MGM4YjE0MTFiNzU2YTlmMmRmOCA9ICQoJzxkaXYgaWQ9Imh0bWxfZTcyMWVlZjQ2YTA3NDBjOGIxNDExYjc1NmE5ZjJkZjgiIHN0eWxlPSJ3aWR0aDogMTAwLjAlOyBoZWlnaHQ6IDEwMC4wJTsiPlN1bW1lcmhpbGwgRWFzdCwgTW9vcmUgUGFyaywgQ2VudHJhbCBUb3JvbnRvPC9kaXY+JylbMF07CiAgICAgICAgICAgICAgICBwb3B1cF80ZmQ3ODUxOTUzZjA0NTY4ODNiZWQ4ODQ5YjY2NTdiMS5zZXRDb250ZW50KGh0bWxfZTcyMWVlZjQ2YTA3NDBjOGIxNDExYjc1NmE5ZjJkZjgpOwogICAgICAgICAgICAKCiAgICAgICAgICAgIGNpcmNsZV9tYXJrZXJfYTMyNjJmMTNjN2MxNDcyZjhmZTQxY2I1ZjlkOGRiYzUuYmluZFBvcHVwKHBvcHVwXzRmZDc4NTE5NTNmMDQ1Njg4M2JlZDg4NDliNjY1N2IxKTsKCiAgICAgICAgICAgIAogICAgICAgIAogICAgCiAgICAgICAgICAgIHZhciBjaXJjbGVfbWFya2VyX2M1YzQ0YmExZjNkMjQ0MGFhYTMzMDNjOGFlMmQzMjJkID0gTC5jaXJjbGVNYXJrZXIoCiAgICAgICAgICAgICAgICBbNDMuNjg2NDEyMjk5OTk5OTksLTc5LjQwMDA0OTNdLAogICAgICAgICAgICAgICAgewogICJidWJibGluZ01vdXNlRXZlbnRzIjogdHJ1ZSwKICAiY29sb3IiOiAiYmx1ZSIsCiAgImRhc2hBcnJheSI6IG51bGwsCiAgImRhc2hPZmZzZXQiOiBudWxsLAogICJmaWxsIjogdHJ1ZSwKICAiZmlsbENvbG9yIjogIiMzMTg2Y2MiLAogICJmaWxsT3BhY2l0eSI6IDAuNywKICAiZmlsbFJ1bGUiOiAiZXZlbm9kZCIsCiAgImxpbmVDYXAiOiAicm91bmQiLAogICJsaW5lSm9pbiI6ICJyb3VuZCIsCiAgIm9wYWNpdHkiOiAxLjAsCiAgInJhZGl1cyI6IDUsCiAgInN0cm9rZSI6IHRydWUsCiAgIndlaWdodCI6IDMKfQogICAgICAgICAgICAgICAgKS5hZGRUbyhtYXBfYWY4NjE0YmZiY2VjNGJjYTkzMzY4YmMxNDJjZTNhNzQpOwogICAgICAgICAgICAKICAgIAogICAgICAgICAgICB2YXIgcG9wdXBfOWZjZTBjZjQyNzQyNGU5Nzk5Y2Y2YmM1MTg2ODAwMmIgPSBMLnBvcHVwKHttYXhXaWR0aDogJzMwMCd9KTsKCiAgICAgICAgICAgIAogICAgICAgICAgICAgICAgdmFyIGh0bWxfYWY2N2QwMTZiNTA5NDBmZGI0OTVjNGMxODEyMGVlNTggPSAkKCc8ZGl2IGlkPSJodG1sX2FmNjdkMDE2YjUwOTQwZmRiNDk1YzRjMTgxMjBlZTU4IiBzdHlsZT0id2lkdGg6IDEwMC4wJTsgaGVpZ2h0OiAxMDAuMCU7Ij5Gb3Jlc3QgSGlsbCBTRSwgU3VtbWVyaGlsbCBXZXN0LCBEZWVyIFBhcmssIFNvdXRoIEhpbGwsIFJhdGhuZWxseSwgQ2VudHJhbCBUb3JvbnRvPC9kaXY+JylbMF07CiAgICAgICAgICAgICAgICBwb3B1cF85ZmNlMGNmNDI3NDI0ZTk3OTljZjZiYzUxODY4MDAyYi5zZXRDb250ZW50KGh0bWxfYWY2N2QwMTZiNTA5NDBmZGI0OTVjNGMxODEyMGVlNTgpOwogICAgICAgICAgICAKCiAgICAgICAgICAgIGNpcmNsZV9tYXJrZXJfYzVjNDRiYTFmM2QyNDQwYWFhMzMwM2M4YWUyZDMyMmQuYmluZFBvcHVwKHBvcHVwXzlmY2UwY2Y0Mjc0MjRlOTc5OWNmNmJjNTE4NjgwMDJiKTsKCiAgICAgICAgICAgIAogICAgICAgIAogICAgCiAgICAgICAgICAgIHZhciBjaXJjbGVfbWFya2VyX2FkOWJhNmJiYWU2MTRiOGQ4NzkzMmU3NzgwN2Y3ZTFlID0gTC5jaXJjbGVNYXJrZXIoCiAgICAgICAgICAgICAgICBbNDMuNjc5NTYyNiwtNzkuMzc3NTI5NDAwMDAwMDFdLAogICAgICAgICAgICAgICAgewogICJidWJibGluZ01vdXNlRXZlbnRzIjogdHJ1ZSwKICAiY29sb3IiOiAiYmx1ZSIsCiAgImRhc2hBcnJheSI6IG51bGwsCiAgImRhc2hPZmZzZXQiOiBudWxsLAogICJmaWxsIjogdHJ1ZSwKICAiZmlsbENvbG9yIjogIiMzMTg2Y2MiLAogICJmaWxsT3BhY2l0eSI6IDAuNywKICAiZmlsbFJ1bGUiOiAiZXZlbm9kZCIsCiAgImxpbmVDYXAiOiAicm91bmQiLAogICJsaW5lSm9pbiI6ICJyb3VuZCIsCiAgIm9wYWNpdHkiOiAxLjAsCiAgInJhZGl1cyI6IDUsCiAgInN0cm9rZSI6IHRydWUsCiAgIndlaWdodCI6IDMKfQogICAgICAgICAgICAgICAgKS5hZGRUbyhtYXBfYWY4NjE0YmZiY2VjNGJjYTkzMzY4YmMxNDJjZTNhNzQpOwogICAgICAgICAgICAKICAgIAogICAgICAgICAgICB2YXIgcG9wdXBfNGY4ZjZmMjU2ZGY2NDhiYjk1NTExMjA5ZDYyZDZiZmMgPSBMLnBvcHVwKHttYXhXaWR0aDogJzMwMCd9KTsKCiAgICAgICAgICAgIAogICAgICAgICAgICAgICAgdmFyIGh0bWxfMjliOTkwNGY2MmFkNDMwZjkwOGQ4ZDgxOTFhZTMwMDQgPSAkKCc8ZGl2IGlkPSJodG1sXzI5Yjk5MDRmNjJhZDQzMGY5MDhkOGQ4MTkxYWUzMDA0IiBzdHlsZT0id2lkdGg6IDEwMC4wJTsgaGVpZ2h0OiAxMDAuMCU7Ij5Sb3NlZGFsZSwgRG93bnRvd24gVG9yb250bzwvZGl2PicpWzBdOwogICAgICAgICAgICAgICAgcG9wdXBfNGY4ZjZmMjU2ZGY2NDhiYjk1NTExMjA5ZDYyZDZiZmMuc2V0Q29udGVudChodG1sXzI5Yjk5MDRmNjJhZDQzMGY5MDhkOGQ4MTkxYWUzMDA0KTsKICAgICAgICAgICAgCgogICAgICAgICAgICBjaXJjbGVfbWFya2VyX2FkOWJhNmJiYWU2MTRiOGQ4NzkzMmU3NzgwN2Y3ZTFlLmJpbmRQb3B1cChwb3B1cF80ZjhmNmYyNTZkZjY0OGJiOTU1MTEyMDlkNjJkNmJmYyk7CgogICAgICAgICAgICAKICAgICAgICAKICAgIAogICAgICAgICAgICB2YXIgY2lyY2xlX21hcmtlcl83YzBhYWQxYzAyM2M0ZDIxOTk3NmVjYTkzNmNmZWFkNCA9IEwuY2lyY2xlTWFya2VyKAogICAgICAgICAgICAgICAgWzQzLjY2Nzk2NywtNzkuMzY3Njc1M10sCiAgICAgICAgICAgICAgICB7CiAgImJ1YmJsaW5nTW91c2VFdmVudHMiOiB0cnVlLAogICJjb2xvciI6ICJibHVlIiwKICAiZGFzaEFycmF5IjogbnVsbCwKICAiZGFzaE9mZnNldCI6IG51bGwsCiAgImZpbGwiOiB0cnVlLAogICJmaWxsQ29sb3IiOiAiIzMxODZjYyIsCiAgImZpbGxPcGFjaXR5IjogMC43LAogICJmaWxsUnVsZSI6ICJldmVub2RkIiwKICAibGluZUNhcCI6ICJyb3VuZCIsCiAgImxpbmVKb2luIjogInJvdW5kIiwKICAib3BhY2l0eSI6IDEuMCwKICAicmFkaXVzIjogNSwKICAic3Ryb2tlIjogdHJ1ZSwKICAid2VpZ2h0IjogMwp9CiAgICAgICAgICAgICAgICApLmFkZFRvKG1hcF9hZjg2MTRiZmJjZWM0YmNhOTMzNjhiYzE0MmNlM2E3NCk7CiAgICAgICAgICAgIAogICAgCiAgICAgICAgICAgIHZhciBwb3B1cF9kYjQxNWEzM2M1ZTc0NjY2YmUzMmFhMzc5YWU2MTVkZCA9IEwucG9wdXAoe21heFdpZHRoOiAnMzAwJ30pOwoKICAgICAgICAgICAgCiAgICAgICAgICAgICAgICB2YXIgaHRtbF82MTkzMjU2OGY1YWQ0ZDNiYWRjOWYwYTRkMjE3Nzc3NyA9ICQoJzxkaXYgaWQ9Imh0bWxfNjE5MzI1NjhmNWFkNGQzYmFkYzlmMGE0ZDIxNzc3NzciIHN0eWxlPSJ3aWR0aDogMTAwLjAlOyBoZWlnaHQ6IDEwMC4wJTsiPkNhYmJhZ2V0b3duLCBTdC4gSmFtZXMgVG93biwgRG93bnRvd24gVG9yb250bzwvZGl2PicpWzBdOwogICAgICAgICAgICAgICAgcG9wdXBfZGI0MTVhMzNjNWU3NDY2NmJlMzJhYTM3OWFlNjE1ZGQuc2V0Q29udGVudChodG1sXzYxOTMyNTY4ZjVhZDRkM2JhZGM5ZjBhNGQyMTc3Nzc3KTsKICAgICAgICAgICAgCgogICAgICAgICAgICBjaXJjbGVfbWFya2VyXzdjMGFhZDFjMDIzYzRkMjE5OTc2ZWNhOTM2Y2ZlYWQ0LmJpbmRQb3B1cChwb3B1cF9kYjQxNWEzM2M1ZTc0NjY2YmUzMmFhMzc5YWU2MTVkZCk7CgogICAgICAgICAgICAKICAgICAgICAKICAgIAogICAgICAgICAgICB2YXIgY2lyY2xlX21hcmtlcl9lMzVlZGUxYmE5YTA0ZGJkYWU5N2YyODE3NDFmZmViYyA9IEwuY2lyY2xlTWFya2VyKAogICAgICAgICAgICAgICAgWzQzLjY2NTg1OTksLTc5LjM4MzE1OTkwMDAwMDAxXSwKICAgICAgICAgICAgICAgIHsKICAiYnViYmxpbmdNb3VzZUV2ZW50cyI6IHRydWUsCiAgImNvbG9yIjogImJsdWUiLAogICJkYXNoQXJyYXkiOiBudWxsLAogICJkYXNoT2Zmc2V0IjogbnVsbCwKICAiZmlsbCI6IHRydWUsCiAgImZpbGxDb2xvciI6ICIjMzE4NmNjIiwKICAiZmlsbE9wYWNpdHkiOiAwLjcsCiAgImZpbGxSdWxlIjogImV2ZW5vZGQiLAogICJsaW5lQ2FwIjogInJvdW5kIiwKICAibGluZUpvaW4iOiAicm91bmQiLAogICJvcGFjaXR5IjogMS4wLAogICJyYWRpdXMiOiA1LAogICJzdHJva2UiOiB0cnVlLAogICJ3ZWlnaHQiOiAzCn0KICAgICAgICAgICAgICAgICkuYWRkVG8obWFwX2FmODYxNGJmYmNlYzRiY2E5MzM2OGJjMTQyY2UzYTc0KTsKICAgICAgICAgICAgCiAgICAKICAgICAgICAgICAgdmFyIHBvcHVwXzc1NzQ2ZGUwYzg0YjRhMmE5NTdlMGFkZDljZGEyMjQxID0gTC5wb3B1cCh7bWF4V2lkdGg6ICczMDAnfSk7CgogICAgICAgICAgICAKICAgICAgICAgICAgICAgIHZhciBodG1sXzU1NmU3ODVjNThhMTQzYmU5MWE1ZmU2YjUwY2Q5ZGI1ID0gJCgnPGRpdiBpZD0iaHRtbF81NTZlNzg1YzU4YTE0M2JlOTFhNWZlNmI1MGNkOWRiNSIgc3R5bGU9IndpZHRoOiAxMDAuMCU7IGhlaWdodDogMTAwLjAlOyI+Q2h1cmNoIGFuZCBXZWxsZXNsZXksIERvd250b3duIFRvcm9udG88L2Rpdj4nKVswXTsKICAgICAgICAgICAgICAgIHBvcHVwXzc1NzQ2ZGUwYzg0YjRhMmE5NTdlMGFkZDljZGEyMjQxLnNldENvbnRlbnQoaHRtbF81NTZlNzg1YzU4YTE0M2JlOTFhNWZlNmI1MGNkOWRiNSk7CiAgICAgICAgICAgIAoKICAgICAgICAgICAgY2lyY2xlX21hcmtlcl9lMzVlZGUxYmE5YTA0ZGJkYWU5N2YyODE3NDFmZmViYy5iaW5kUG9wdXAocG9wdXBfNzU3NDZkZTBjODRiNGEyYTk1N2UwYWRkOWNkYTIyNDEpOwoKICAgICAgICAgICAgCiAgICAgICAgCiAgICAKICAgICAgICAgICAgdmFyIGNpcmNsZV9tYXJrZXJfZDRiMjJkMzcwNDZmNDdkZWI0N2EwMTQ3ZjA0NzY3YWIgPSBMLmNpcmNsZU1hcmtlcigKICAgICAgICAgICAgICAgIFs0My42NTQyNTk5LC03OS4zNjA2MzU5XSwKICAgICAgICAgICAgICAgIHsKICAiYnViYmxpbmdNb3VzZUV2ZW50cyI6IHRydWUsCiAgImNvbG9yIjogImJsdWUiLAogICJkYXNoQXJyYXkiOiBudWxsLAogICJkYXNoT2Zmc2V0IjogbnVsbCwKICAiZmlsbCI6IHRydWUsCiAgImZpbGxDb2xvciI6ICIjMzE4NmNjIiwKICAiZmlsbE9wYWNpdHkiOiAwLjcsCiAgImZpbGxSdWxlIjogImV2ZW5vZGQiLAogICJsaW5lQ2FwIjogInJvdW5kIiwKICAibGluZUpvaW4iOiAicm91bmQiLAogICJvcGFjaXR5IjogMS4wLAogICJyYWRpdXMiOiA1LAogICJzdHJva2UiOiB0cnVlLAogICJ3ZWlnaHQiOiAzCn0KICAgICAgICAgICAgICAgICkuYWRkVG8obWFwX2FmODYxNGJmYmNlYzRiY2E5MzM2OGJjMTQyY2UzYTc0KTsKICAgICAgICAgICAgCiAgICAKICAgICAgICAgICAgdmFyIHBvcHVwX2NhN2U3NjNjNWJjNzQzNjE4MWUyYjUyNjFkZTI4ZDI0ID0gTC5wb3B1cCh7bWF4V2lkdGg6ICczMDAnfSk7CgogICAgICAgICAgICAKICAgICAgICAgICAgICAgIHZhciBodG1sX2MxZWQ4ZTE4ZWVjNzQ1OWVhZmZiYmJlYWE4NzRmNWYwID0gJCgnPGRpdiBpZD0iaHRtbF9jMWVkOGUxOGVlYzc0NTllYWZmYmJiZWFhODc0ZjVmMCIgc3R5bGU9IndpZHRoOiAxMDAuMCU7IGhlaWdodDogMTAwLjAlOyI+UmVnZW50IFBhcmssIEhhcmJvdXJmcm9udCwgRG93bnRvd24gVG9yb250bzwvZGl2PicpWzBdOwogICAgICAgICAgICAgICAgcG9wdXBfY2E3ZTc2M2M1YmM3NDM2MTgxZTJiNTI2MWRlMjhkMjQuc2V0Q29udGVudChodG1sX2MxZWQ4ZTE4ZWVjNzQ1OWVhZmZiYmJlYWE4NzRmNWYwKTsKICAgICAgICAgICAgCgogICAgICAgICAgICBjaXJjbGVfbWFya2VyX2Q0YjIyZDM3MDQ2ZjQ3ZGViNDdhMDE0N2YwNDc2N2FiLmJpbmRQb3B1cChwb3B1cF9jYTdlNzYzYzViYzc0MzYxODFlMmI1MjYxZGUyOGQyNCk7CgogICAgICAgICAgICAKICAgICAgICAKICAgIAogICAgICAgICAgICB2YXIgY2lyY2xlX21hcmtlcl9hZjM0ZDJhMjllNTE0NzdlYWE1MjRhNzk2MmUyMTU2MiA9IEwuY2lyY2xlTWFya2VyKAogICAgICAgICAgICAgICAgWzQzLjY1NzE2MTgsLTc5LjM3ODkzNzA5OTk5OTk5XSwKICAgICAgICAgICAgICAgIHsKICAiYnViYmxpbmdNb3VzZUV2ZW50cyI6IHRydWUsCiAgImNvbG9yIjogImJsdWUiLAogICJkYXNoQXJyYXkiOiBudWxsLAogICJkYXNoT2Zmc2V0IjogbnVsbCwKICAiZmlsbCI6IHRydWUsCiAgImZpbGxDb2xvciI6ICIjMzE4NmNjIiwKICAiZmlsbE9wYWNpdHkiOiAwLjcsCiAgImZpbGxSdWxlIjogImV2ZW5vZGQiLAogICJsaW5lQ2FwIjogInJvdW5kIiwKICAibGluZUpvaW4iOiAicm91bmQiLAogICJvcGFjaXR5IjogMS4wLAogICJyYWRpdXMiOiA1LAogICJzdHJva2UiOiB0cnVlLAogICJ3ZWlnaHQiOiAzCn0KICAgICAgICAgICAgICAgICkuYWRkVG8obWFwX2FmODYxNGJmYmNlYzRiY2E5MzM2OGJjMTQyY2UzYTc0KTsKICAgICAgICAgICAgCiAgICAKICAgICAgICAgICAgdmFyIHBvcHVwXzhkOTQ3OTUwYmQzOTQzNTU4OTlkN2U5OTM5NjRmNTY2ID0gTC5wb3B1cCh7bWF4V2lkdGg6ICczMDAnfSk7CgogICAgICAgICAgICAKICAgICAgICAgICAgICAgIHZhciBodG1sX2MxNTc0NGQ4NTNjMTRkZmY5YjlhODlhNGFmMjgzN2I3ID0gJCgnPGRpdiBpZD0iaHRtbF9jMTU3NDRkODUzYzE0ZGZmOWI5YTg5YTRhZjI4MzdiNyIgc3R5bGU9IndpZHRoOiAxMDAuMCU7IGhlaWdodDogMTAwLjAlOyI+R2FyZGVuIERpc3RyaWN0LCBSeWVyc29uLCBEb3dudG93biBUb3JvbnRvPC9kaXY+JylbMF07CiAgICAgICAgICAgICAgICBwb3B1cF84ZDk0Nzk1MGJkMzk0MzU1ODk5ZDdlOTkzOTY0ZjU2Ni5zZXRDb250ZW50KGh0bWxfYzE1NzQ0ZDg1M2MxNGRmZjliOWE4OWE0YWYyODM3YjcpOwogICAgICAgICAgICAKCiAgICAgICAgICAgIGNpcmNsZV9tYXJrZXJfYWYzNGQyYTI5ZTUxNDc3ZWFhNTI0YTc5NjJlMjE1NjIuYmluZFBvcHVwKHBvcHVwXzhkOTQ3OTUwYmQzOTQzNTU4OTlkN2U5OTM5NjRmNTY2KTsKCiAgICAgICAgICAgIAogICAgICAgIAogICAgCiAgICAgICAgICAgIHZhciBjaXJjbGVfbWFya2VyX2IwODA4YTViNWFhZTRjYzI5MWI1NWZkYjU3ODAxYjNiID0gTC5jaXJjbGVNYXJrZXIoCiAgICAgICAgICAgICAgICBbNDMuNjUxNDkzOSwtNzkuMzc1NDE3OV0sCiAgICAgICAgICAgICAgICB7CiAgImJ1YmJsaW5nTW91c2VFdmVudHMiOiB0cnVlLAogICJjb2xvciI6ICJibHVlIiwKICAiZGFzaEFycmF5IjogbnVsbCwKICAiZGFzaE9mZnNldCI6IG51bGwsCiAgImZpbGwiOiB0cnVlLAogICJmaWxsQ29sb3IiOiAiIzMxODZjYyIsCiAgImZpbGxPcGFjaXR5IjogMC43LAogICJmaWxsUnVsZSI6ICJldmVub2RkIiwKICAibGluZUNhcCI6ICJyb3VuZCIsCiAgImxpbmVKb2luIjogInJvdW5kIiwKICAib3BhY2l0eSI6IDEuMCwKICAicmFkaXVzIjogNSwKICAic3Ryb2tlIjogdHJ1ZSwKICAid2VpZ2h0IjogMwp9CiAgICAgICAgICAgICAgICApLmFkZFRvKG1hcF9hZjg2MTRiZmJjZWM0YmNhOTMzNjhiYzE0MmNlM2E3NCk7CiAgICAgICAgICAgIAogICAgCiAgICAgICAgICAgIHZhciBwb3B1cF9mMWI1YmQ1ZjlhOTE0ZDgyOGEyZjg5YzY5ZTRmNDA4MiA9IEwucG9wdXAoe21heFdpZHRoOiAnMzAwJ30pOwoKICAgICAgICAgICAgCiAgICAgICAgICAgICAgICB2YXIgaHRtbF85NGE5Nzk1ODkwNDA0YmQzOWM5MjU1NGQ5ZWM3ZGZkNCA9ICQoJzxkaXYgaWQ9Imh0bWxfOTRhOTc5NTg5MDQwNGJkMzljOTI1NTRkOWVjN2RmZDQiIHN0eWxlPSJ3aWR0aDogMTAwLjAlOyBoZWlnaHQ6IDEwMC4wJTsiPlN0LiBKYW1lcyBUb3duLCBEb3dudG93biBUb3JvbnRvPC9kaXY+JylbMF07CiAgICAgICAgICAgICAgICBwb3B1cF9mMWI1YmQ1ZjlhOTE0ZDgyOGEyZjg5YzY5ZTRmNDA4Mi5zZXRDb250ZW50KGh0bWxfOTRhOTc5NTg5MDQwNGJkMzljOTI1NTRkOWVjN2RmZDQpOwogICAgICAgICAgICAKCiAgICAgICAgICAgIGNpcmNsZV9tYXJrZXJfYjA4MDhhNWI1YWFlNGNjMjkxYjU1ZmRiNTc4MDFiM2IuYmluZFBvcHVwKHBvcHVwX2YxYjViZDVmOWE5MTRkODI4YTJmODljNjllNGY0MDgyKTsKCiAgICAgICAgICAgIAogICAgICAgIAogICAgCiAgICAgICAgICAgIHZhciBjaXJjbGVfbWFya2VyX2Y4ZmNkOGU0Y2YwMDQwZWRiYWNmMGFiZTIxYTZiNmM0ID0gTC5jaXJjbGVNYXJrZXIoCiAgICAgICAgICAgICAgICBbNDMuNjQ0NzcwNzk5OTk5OTk2LC03OS4zNzMzMDY0XSwKICAgICAgICAgICAgICAgIHsKICAiYnViYmxpbmdNb3VzZUV2ZW50cyI6IHRydWUsCiAgImNvbG9yIjogImJsdWUiLAogICJkYXNoQXJyYXkiOiBudWxsLAogICJkYXNoT2Zmc2V0IjogbnVsbCwKICAiZmlsbCI6IHRydWUsCiAgImZpbGxDb2xvciI6ICIjMzE4NmNjIiwKICAiZmlsbE9wYWNpdHkiOiAwLjcsCiAgImZpbGxSdWxlIjogImV2ZW5vZGQiLAogICJsaW5lQ2FwIjogInJvdW5kIiwKICAibGluZUpvaW4iOiAicm91bmQiLAogICJvcGFjaXR5IjogMS4wLAogICJyYWRpdXMiOiA1LAogICJzdHJva2UiOiB0cnVlLAogICJ3ZWlnaHQiOiAzCn0KICAgICAgICAgICAgICAgICkuYWRkVG8obWFwX2FmODYxNGJmYmNlYzRiY2E5MzM2OGJjMTQyY2UzYTc0KTsKICAgICAgICAgICAgCiAgICAKICAgICAgICAgICAgdmFyIHBvcHVwXzMyMDBhYWQxYjdhOTRiY2I5ZGRkOWY0MmUzNjFjYWM1ID0gTC5wb3B1cCh7bWF4V2lkdGg6ICczMDAnfSk7CgogICAgICAgICAgICAKICAgICAgICAgICAgICAgIHZhciBodG1sX2YwYjUxODFkOTcwZTQ2YmE5ZjkxMjMwZGM0YmU1MTQ5ID0gJCgnPGRpdiBpZD0iaHRtbF9mMGI1MTgxZDk3MGU0NmJhOWY5MTIzMGRjNGJlNTE0OSIgc3R5bGU9IndpZHRoOiAxMDAuMCU7IGhlaWdodDogMTAwLjAlOyI+QmVyY3p5IFBhcmssIERvd250b3duIFRvcm9udG88L2Rpdj4nKVswXTsKICAgICAgICAgICAgICAgIHBvcHVwXzMyMDBhYWQxYjdhOTRiY2I5ZGRkOWY0MmUzNjFjYWM1LnNldENvbnRlbnQoaHRtbF9mMGI1MTgxZDk3MGU0NmJhOWY5MTIzMGRjNGJlNTE0OSk7CiAgICAgICAgICAgIAoKICAgICAgICAgICAgY2lyY2xlX21hcmtlcl9mOGZjZDhlNGNmMDA0MGVkYmFjZjBhYmUyMWE2YjZjNC5iaW5kUG9wdXAocG9wdXBfMzIwMGFhZDFiN2E5NGJjYjlkZGQ5ZjQyZTM2MWNhYzUpOwoKICAgICAgICAgICAgCiAgICAgICAgCiAgICAKICAgICAgICAgICAgdmFyIGNpcmNsZV9tYXJrZXJfYTMyYTEzMTExYzE1NDBlZWEyZmYzMTkyMTAxYWFhNjkgPSBMLmNpcmNsZU1hcmtlcigKICAgICAgICAgICAgICAgIFs0My42NTc5NTI0LC03OS4zODczODI2XSwKICAgICAgICAgICAgICAgIHsKICAiYnViYmxpbmdNb3VzZUV2ZW50cyI6IHRydWUsCiAgImNvbG9yIjogImJsdWUiLAogICJkYXNoQXJyYXkiOiBudWxsLAogICJkYXNoT2Zmc2V0IjogbnVsbCwKICAiZmlsbCI6IHRydWUsCiAgImZpbGxDb2xvciI6ICIjMzE4NmNjIiwKICAiZmlsbE9wYWNpdHkiOiAwLjcsCiAgImZpbGxSdWxlIjogImV2ZW5vZGQiLAogICJsaW5lQ2FwIjogInJvdW5kIiwKICAibGluZUpvaW4iOiAicm91bmQiLAogICJvcGFjaXR5IjogMS4wLAogICJyYWRpdXMiOiA1LAogICJzdHJva2UiOiB0cnVlLAogICJ3ZWlnaHQiOiAzCn0KICAgICAgICAgICAgICAgICkuYWRkVG8obWFwX2FmODYxNGJmYmNlYzRiY2E5MzM2OGJjMTQyY2UzYTc0KTsKICAgICAgICAgICAgCiAgICAKICAgICAgICAgICAgdmFyIHBvcHVwXzQ1MmE5OTg0ZDRiNTQ5OGJhZjc1ZTA2MzAyMzI5MmIwID0gTC5wb3B1cCh7bWF4V2lkdGg6ICczMDAnfSk7CgogICAgICAgICAgICAKICAgICAgICAgICAgICAgIHZhciBodG1sX2E0N2M5NWI2MmYwOTQ4MGE5YTkwNzU4NjVlM2U3NDY3ID0gJCgnPGRpdiBpZD0iaHRtbF9hNDdjOTViNjJmMDk0ODBhOWE5MDc1ODY1ZTNlNzQ2NyIgc3R5bGU9IndpZHRoOiAxMDAuMCU7IGhlaWdodDogMTAwLjAlOyI+Q2VudHJhbCBCYXkgU3RyZWV0LCBEb3dudG93biBUb3JvbnRvPC9kaXY+JylbMF07CiAgICAgICAgICAgICAgICBwb3B1cF80NTJhOTk4NGQ0YjU0OThiYWY3NWUwNjMwMjMyOTJiMC5zZXRDb250ZW50KGh0bWxfYTQ3Yzk1YjYyZjA5NDgwYTlhOTA3NTg2NWUzZTc0NjcpOwogICAgICAgICAgICAKCiAgICAgICAgICAgIGNpcmNsZV9tYXJrZXJfYTMyYTEzMTExYzE1NDBlZWEyZmYzMTkyMTAxYWFhNjkuYmluZFBvcHVwKHBvcHVwXzQ1MmE5OTg0ZDRiNTQ5OGJhZjc1ZTA2MzAyMzI5MmIwKTsKCiAgICAgICAgICAgIAogICAgICAgIAogICAgCiAgICAgICAgICAgIHZhciBjaXJjbGVfbWFya2VyXzFlZjg2ZjVmYTQwNTQ2NTg5ODhiZGNmZmE4M2YxMzA0ID0gTC5jaXJjbGVNYXJrZXIoCiAgICAgICAgICAgICAgICBbNDMuNjUwNTcxMjAwMDAwMDEsLTc5LjM4NDU2NzVdLAogICAgICAgICAgICAgICAgewogICJidWJibGluZ01vdXNlRXZlbnRzIjogdHJ1ZSwKICAiY29sb3IiOiAiYmx1ZSIsCiAgImRhc2hBcnJheSI6IG51bGwsCiAgImRhc2hPZmZzZXQiOiBudWxsLAogICJmaWxsIjogdHJ1ZSwKICAiZmlsbENvbG9yIjogIiMzMTg2Y2MiLAogICJmaWxsT3BhY2l0eSI6IDAuNywKICAiZmlsbFJ1bGUiOiAiZXZlbm9kZCIsCiAgImxpbmVDYXAiOiAicm91bmQiLAogICJsaW5lSm9pbiI6ICJyb3VuZCIsCiAgIm9wYWNpdHkiOiAxLjAsCiAgInJhZGl1cyI6IDUsCiAgInN0cm9rZSI6IHRydWUsCiAgIndlaWdodCI6IDMKfQogICAgICAgICAgICAgICAgKS5hZGRUbyhtYXBfYWY4NjE0YmZiY2VjNGJjYTkzMzY4YmMxNDJjZTNhNzQpOwogICAgICAgICAgICAKICAgIAogICAgICAgICAgICB2YXIgcG9wdXBfZjEwN2E2ZWJjMDllNDY1MDg4YWIzODcwOWQ5ZDViMjAgPSBMLnBvcHVwKHttYXhXaWR0aDogJzMwMCd9KTsKCiAgICAgICAgICAgIAogICAgICAgICAgICAgICAgdmFyIGh0bWxfMzEyZjU0MjM0ZDNhNGQ1M2E2NzdiZmI5OGQ0ZjE1YjkgPSAkKCc8ZGl2IGlkPSJodG1sXzMxMmY1NDIzNGQzYTRkNTNhNjc3YmZiOThkNGYxNWI5IiBzdHlsZT0id2lkdGg6IDEwMC4wJTsgaGVpZ2h0OiAxMDAuMCU7Ij5LaW5nLCBSaWNobW9uZCwgQWRlbGFpZGUsIERvd250b3duIFRvcm9udG88L2Rpdj4nKVswXTsKICAgICAgICAgICAgICAgIHBvcHVwX2YxMDdhNmViYzA5ZTQ2NTA4OGFiMzg3MDlkOWQ1YjIwLnNldENvbnRlbnQoaHRtbF8zMTJmNTQyMzRkM2E0ZDUzYTY3N2JmYjk4ZDRmMTViOSk7CiAgICAgICAgICAgIAoKICAgICAgICAgICAgY2lyY2xlX21hcmtlcl8xZWY4NmY1ZmE0MDU0NjU4OTg4YmRjZmZhODNmMTMwNC5iaW5kUG9wdXAocG9wdXBfZjEwN2E2ZWJjMDllNDY1MDg4YWIzODcwOWQ5ZDViMjApOwoKICAgICAgICAgICAgCiAgICAgICAgCiAgICAKICAgICAgICAgICAgdmFyIGNpcmNsZV9tYXJrZXJfODA5ZmY3MDY0MGQ1NDViODhiMjViNzZhNWMyYjJiNjcgPSBMLmNpcmNsZU1hcmtlcigKICAgICAgICAgICAgICAgIFs0My42NDA4MTU3LC03OS4zODE3NTIyOTk5OTk5OV0sCiAgICAgICAgICAgICAgICB7CiAgImJ1YmJsaW5nTW91c2VFdmVudHMiOiB0cnVlLAogICJjb2xvciI6ICJibHVlIiwKICAiZGFzaEFycmF5IjogbnVsbCwKICAiZGFzaE9mZnNldCI6IG51bGwsCiAgImZpbGwiOiB0cnVlLAogICJmaWxsQ29sb3IiOiAiIzMxODZjYyIsCiAgImZpbGxPcGFjaXR5IjogMC43LAogICJmaWxsUnVsZSI6ICJldmVub2RkIiwKICAibGluZUNhcCI6ICJyb3VuZCIsCiAgImxpbmVKb2luIjogInJvdW5kIiwKICAib3BhY2l0eSI6IDEuMCwKICAicmFkaXVzIjogNSwKICAic3Ryb2tlIjogdHJ1ZSwKICAid2VpZ2h0IjogMwp9CiAgICAgICAgICAgICAgICApLmFkZFRvKG1hcF9hZjg2MTRiZmJjZWM0YmNhOTMzNjhiYzE0MmNlM2E3NCk7CiAgICAgICAgICAgIAogICAgCiAgICAgICAgICAgIHZhciBwb3B1cF81M2ZmOTYxYzJlN2Q0ODA1YjYwMDYyYzhmM2RmNzkzZSA9IEwucG9wdXAoe21heFdpZHRoOiAnMzAwJ30pOwoKICAgICAgICAgICAgCiAgICAgICAgICAgICAgICB2YXIgaHRtbF8xOTg0YzZkYzNmMDA0YTk3YTMxMmVhMWRlOGNlNzQ0MCA9ICQoJzxkaXYgaWQ9Imh0bWxfMTk4NGM2ZGMzZjAwNGE5N2EzMTJlYTFkZThjZTc0NDAiIHN0eWxlPSJ3aWR0aDogMTAwLjAlOyBoZWlnaHQ6IDEwMC4wJTsiPlVuaW9uIFN0YXRpb24sIFRvcm9udG8gSXNsYW5kcywgSGFyYm91cmZyb250IEVhc3QsIERvd250b3duIFRvcm9udG88L2Rpdj4nKVswXTsKICAgICAgICAgICAgICAgIHBvcHVwXzUzZmY5NjFjMmU3ZDQ4MDViNjAwNjJjOGYzZGY3OTNlLnNldENvbnRlbnQoaHRtbF8xOTg0YzZkYzNmMDA0YTk3YTMxMmVhMWRlOGNlNzQ0MCk7CiAgICAgICAgICAgIAoKICAgICAgICAgICAgY2lyY2xlX21hcmtlcl84MDlmZjcwNjQwZDU0NWI4OGIyNWI3NmE1YzJiMmI2Ny5iaW5kUG9wdXAocG9wdXBfNTNmZjk2MWMyZTdkNDgwNWI2MDA2MmM4ZjNkZjc5M2UpOwoKICAgICAgICAgICAgCiAgICAgICAgCiAgICAKICAgICAgICAgICAgdmFyIGNpcmNsZV9tYXJrZXJfNTg1NTA3Mzc4OGVhNDQ4MmE3ODRiMWQ0OTcxZWY5NDcgPSBMLmNpcmNsZU1hcmtlcigKICAgICAgICAgICAgICAgIFs0My42NDcxNzY4LC03OS4zODE1NzY0MDAwMDAwMV0sCiAgICAgICAgICAgICAgICB7CiAgImJ1YmJsaW5nTW91c2VFdmVudHMiOiB0cnVlLAogICJjb2xvciI6ICJibHVlIiwKICAiZGFzaEFycmF5IjogbnVsbCwKICAiZGFzaE9mZnNldCI6IG51bGwsCiAgImZpbGwiOiB0cnVlLAogICJmaWxsQ29sb3IiOiAiIzMxODZjYyIsCiAgImZpbGxPcGFjaXR5IjogMC43LAogICJmaWxsUnVsZSI6ICJldmVub2RkIiwKICAibGluZUNhcCI6ICJyb3VuZCIsCiAgImxpbmVKb2luIjogInJvdW5kIiwKICAib3BhY2l0eSI6IDEuMCwKICAicmFkaXVzIjogNSwKICAic3Ryb2tlIjogdHJ1ZSwKICAid2VpZ2h0IjogMwp9CiAgICAgICAgICAgICAgICApLmFkZFRvKG1hcF9hZjg2MTRiZmJjZWM0YmNhOTMzNjhiYzE0MmNlM2E3NCk7CiAgICAgICAgICAgIAogICAgCiAgICAgICAgICAgIHZhciBwb3B1cF9hYjNiNGQ2Y2I1ODM0YmEzYjgyYTdlYjU1OTJjN2ZiMiA9IEwucG9wdXAoe21heFdpZHRoOiAnMzAwJ30pOwoKICAgICAgICAgICAgCiAgICAgICAgICAgICAgICB2YXIgaHRtbF81YjYxMTRmNjEzMDM0NjYxYmI2OGMwMjZkZDRmMTI4NSA9ICQoJzxkaXYgaWQ9Imh0bWxfNWI2MTE0ZjYxMzAzNDY2MWJiNjhjMDI2ZGQ0ZjEyODUiIHN0eWxlPSJ3aWR0aDogMTAwLjAlOyBoZWlnaHQ6IDEwMC4wJTsiPlRvcm9udG8gRG9taW5pb24gQ2VudHJlLCBEZXNpZ24gRXhjaGFuZ2UsIERvd250b3duIFRvcm9udG88L2Rpdj4nKVswXTsKICAgICAgICAgICAgICAgIHBvcHVwX2FiM2I0ZDZjYjU4MzRiYTNiODJhN2ViNTU5MmM3ZmIyLnNldENvbnRlbnQoaHRtbF81YjYxMTRmNjEzMDM0NjYxYmI2OGMwMjZkZDRmMTI4NSk7CiAgICAgICAgICAgIAoKICAgICAgICAgICAgY2lyY2xlX21hcmtlcl81ODU1MDczNzg4ZWE0NDgyYTc4NGIxZDQ5NzFlZjk0Ny5iaW5kUG9wdXAocG9wdXBfYWIzYjRkNmNiNTgzNGJhM2I4MmE3ZWI1NTkyYzdmYjIpOwoKICAgICAgICAgICAgCiAgICAgICAgCiAgICAKICAgICAgICAgICAgdmFyIGNpcmNsZV9tYXJrZXJfZTgwNDdlNGY4NjIzNGI4N2I0NzFjNjBkZjBmZDE0YWYgPSBMLmNpcmNsZU1hcmtlcigKICAgICAgICAgICAgICAgIFs0My42NDgxOTg1LC03OS4zNzk4MTY5MDAwMDAwMV0sCiAgICAgICAgICAgICAgICB7CiAgImJ1YmJsaW5nTW91c2VFdmVudHMiOiB0cnVlLAogICJjb2xvciI6ICJibHVlIiwKICAiZGFzaEFycmF5IjogbnVsbCwKICAiZGFzaE9mZnNldCI6IG51bGwsCiAgImZpbGwiOiB0cnVlLAogICJmaWxsQ29sb3IiOiAiIzMxODZjYyIsCiAgImZpbGxPcGFjaXR5IjogMC43LAogICJmaWxsUnVsZSI6ICJldmVub2RkIiwKICAibGluZUNhcCI6ICJyb3VuZCIsCiAgImxpbmVKb2luIjogInJvdW5kIiwKICAib3BhY2l0eSI6IDEuMCwKICAicmFkaXVzIjogNSwKICAic3Ryb2tlIjogdHJ1ZSwKICAid2VpZ2h0IjogMwp9CiAgICAgICAgICAgICAgICApLmFkZFRvKG1hcF9hZjg2MTRiZmJjZWM0YmNhOTMzNjhiYzE0MmNlM2E3NCk7CiAgICAgICAgICAgIAogICAgCiAgICAgICAgICAgIHZhciBwb3B1cF9hZTYwZmI5M2NmM2Q0MzY4YWU0OWI2NjllNzAwMjI0YSA9IEwucG9wdXAoe21heFdpZHRoOiAnMzAwJ30pOwoKICAgICAgICAgICAgCiAgICAgICAgICAgICAgICB2YXIgaHRtbF8zNzIwM2Y3N2U2ZTE0NTE0OGM1NDUzNGZiNzA5MTU5NSA9ICQoJzxkaXYgaWQ9Imh0bWxfMzcyMDNmNzdlNmUxNDUxNDhjNTQ1MzRmYjcwOTE1OTUiIHN0eWxlPSJ3aWR0aDogMTAwLjAlOyBoZWlnaHQ6IDEwMC4wJTsiPkNvbW1lcmNlIENvdXJ0LCBWaWN0b3JpYSBIb3RlbCwgRG93bnRvd24gVG9yb250bzwvZGl2PicpWzBdOwogICAgICAgICAgICAgICAgcG9wdXBfYWU2MGZiOTNjZjNkNDM2OGFlNDliNjY5ZTcwMDIyNGEuc2V0Q29udGVudChodG1sXzM3MjAzZjc3ZTZlMTQ1MTQ4YzU0NTM0ZmI3MDkxNTk1KTsKICAgICAgICAgICAgCgogICAgICAgICAgICBjaXJjbGVfbWFya2VyX2U4MDQ3ZTRmODYyMzRiODdiNDcxYzYwZGYwZmQxNGFmLmJpbmRQb3B1cChwb3B1cF9hZTYwZmI5M2NmM2Q0MzY4YWU0OWI2NjllNzAwMjI0YSk7CgogICAgICAgICAgICAKICAgICAgICAKICAgIAogICAgICAgICAgICB2YXIgY2lyY2xlX21hcmtlcl9lZWI3YTI1NDMyNWI0MjBjYjUzZDkxODljYWRlZDc2YyA9IEwuY2lyY2xlTWFya2VyKAogICAgICAgICAgICAgICAgWzQzLjcxMTY5NDgsLTc5LjQxNjkzNTU5OTk5OTk5XSwKICAgICAgICAgICAgICAgIHsKICAiYnViYmxpbmdNb3VzZUV2ZW50cyI6IHRydWUsCiAgImNvbG9yIjogImJsdWUiLAogICJkYXNoQXJyYXkiOiBudWxsLAogICJkYXNoT2Zmc2V0IjogbnVsbCwKICAiZmlsbCI6IHRydWUsCiAgImZpbGxDb2xvciI6ICIjMzE4NmNjIiwKICAiZmlsbE9wYWNpdHkiOiAwLjcsCiAgImZpbGxSdWxlIjogImV2ZW5vZGQiLAogICJsaW5lQ2FwIjogInJvdW5kIiwKICAibGluZUpvaW4iOiAicm91bmQiLAogICJvcGFjaXR5IjogMS4wLAogICJyYWRpdXMiOiA1LAogICJzdHJva2UiOiB0cnVlLAogICJ3ZWlnaHQiOiAzCn0KICAgICAgICAgICAgICAgICkuYWRkVG8obWFwX2FmODYxNGJmYmNlYzRiY2E5MzM2OGJjMTQyY2UzYTc0KTsKICAgICAgICAgICAgCiAgICAKICAgICAgICAgICAgdmFyIHBvcHVwXzJlNzhiOWIzZDMzNTRjYmFhZTMxMzFkNjViZWIwZjI0ID0gTC5wb3B1cCh7bWF4V2lkdGg6ICczMDAnfSk7CgogICAgICAgICAgICAKICAgICAgICAgICAgICAgIHZhciBodG1sXzMwMjUwZTVjNzEyYzQ5N2Q5ODY2Mzk2MzE3NDMwZTU1ID0gJCgnPGRpdiBpZD0iaHRtbF8zMDI1MGU1YzcxMmM0OTdkOTg2NjM5NjMxNzQzMGU1NSIgc3R5bGU9IndpZHRoOiAxMDAuMCU7IGhlaWdodDogMTAwLjAlOyI+Um9zZWxhd24sIENlbnRyYWwgVG9yb250bzwvZGl2PicpWzBdOwogICAgICAgICAgICAgICAgcG9wdXBfMmU3OGI5YjNkMzM1NGNiYWFlMzEzMWQ2NWJlYjBmMjQuc2V0Q29udGVudChodG1sXzMwMjUwZTVjNzEyYzQ5N2Q5ODY2Mzk2MzE3NDMwZTU1KTsKICAgICAgICAgICAgCgogICAgICAgICAgICBjaXJjbGVfbWFya2VyX2VlYjdhMjU0MzI1YjQyMGNiNTNkOTE4OWNhZGVkNzZjLmJpbmRQb3B1cChwb3B1cF8yZTc4YjliM2QzMzU0Y2JhYWUzMTMxZDY1YmViMGYyNCk7CgogICAgICAgICAgICAKICAgICAgICAKICAgIAogICAgICAgICAgICB2YXIgY2lyY2xlX21hcmtlcl83NWQyZDQ1ZDk5YjE0OTQzOWM2MTkxZDE0ODljZTViYyA9IEwuY2lyY2xlTWFya2VyKAogICAgICAgICAgICAgICAgWzQzLjY5Njk0NzYsLTc5LjQxMTMwNzIwMDAwMDAxXSwKICAgICAgICAgICAgICAgIHsKICAiYnViYmxpbmdNb3VzZUV2ZW50cyI6IHRydWUsCiAgImNvbG9yIjogImJsdWUiLAogICJkYXNoQXJyYXkiOiBudWxsLAogICJkYXNoT2Zmc2V0IjogbnVsbCwKICAiZmlsbCI6IHRydWUsCiAgImZpbGxDb2xvciI6ICIjMzE4NmNjIiwKICAiZmlsbE9wYWNpdHkiOiAwLjcsCiAgImZpbGxSdWxlIjogImV2ZW5vZGQiLAogICJsaW5lQ2FwIjogInJvdW5kIiwKICAibGluZUpvaW4iOiAicm91bmQiLAogICJvcGFjaXR5IjogMS4wLAogICJyYWRpdXMiOiA1LAogICJzdHJva2UiOiB0cnVlLAogICJ3ZWlnaHQiOiAzCn0KICAgICAgICAgICAgICAgICkuYWRkVG8obWFwX2FmODYxNGJmYmNlYzRiY2E5MzM2OGJjMTQyY2UzYTc0KTsKICAgICAgICAgICAgCiAgICAKICAgICAgICAgICAgdmFyIHBvcHVwXzdiN2M1NjJlMjgyZTQ4YzRhNmZiMTJkNzEyYzNkOWZjID0gTC5wb3B1cCh7bWF4V2lkdGg6ICczMDAnfSk7CgogICAgICAgICAgICAKICAgICAgICAgICAgICAgIHZhciBodG1sXzQ3M2Q1MjJkMmY0ZjQwZGRhNGFiMjdhYjdhM2FhMTczID0gJCgnPGRpdiBpZD0iaHRtbF80NzNkNTIyZDJmNGY0MGRkYTRhYjI3YWI3YTNhYTE3MyIgc3R5bGU9IndpZHRoOiAxMDAuMCU7IGhlaWdodDogMTAwLjAlOyI+Rm9yZXN0IEhpbGwgTm9ydGgsIEZvcmVzdCBIaWxsIFdlc3QsIENlbnRyYWwgVG9yb250bzwvZGl2PicpWzBdOwogICAgICAgICAgICAgICAgcG9wdXBfN2I3YzU2MmUyODJlNDhjNGE2ZmIxMmQ3MTJjM2Q5ZmMuc2V0Q29udGVudChodG1sXzQ3M2Q1MjJkMmY0ZjQwZGRhNGFiMjdhYjdhM2FhMTczKTsKICAgICAgICAgICAgCgogICAgICAgICAgICBjaXJjbGVfbWFya2VyXzc1ZDJkNDVkOTliMTQ5NDM5YzYxOTFkMTQ4OWNlNWJjLmJpbmRQb3B1cChwb3B1cF83YjdjNTYyZTI4MmU0OGM0YTZmYjEyZDcxMmMzZDlmYyk7CgogICAgICAgICAgICAKICAgICAgICAKICAgIAogICAgICAgICAgICB2YXIgY2lyY2xlX21hcmtlcl8yYmMyOTc2ZjExZjI0YjljOTcxZDNmZTNmNmU2MjBjYSA9IEwuY2lyY2xlTWFya2VyKAogICAgICAgICAgICAgICAgWzQzLjY3MjcwOTcsLTc5LjQwNTY3ODQwMDAwMDAxXSwKICAgICAgICAgICAgICAgIHsKICAiYnViYmxpbmdNb3VzZUV2ZW50cyI6IHRydWUsCiAgImNvbG9yIjogImJsdWUiLAogICJkYXNoQXJyYXkiOiBudWxsLAogICJkYXNoT2Zmc2V0IjogbnVsbCwKICAiZmlsbCI6IHRydWUsCiAgImZpbGxDb2xvciI6ICIjMzE4NmNjIiwKICAiZmlsbE9wYWNpdHkiOiAwLjcsCiAgImZpbGxSdWxlIjogImV2ZW5vZGQiLAogICJsaW5lQ2FwIjogInJvdW5kIiwKICAibGluZUpvaW4iOiAicm91bmQiLAogICJvcGFjaXR5IjogMS4wLAogICJyYWRpdXMiOiA1LAogICJzdHJva2UiOiB0cnVlLAogICJ3ZWlnaHQiOiAzCn0KICAgICAgICAgICAgICAgICkuYWRkVG8obWFwX2FmODYxNGJmYmNlYzRiY2E5MzM2OGJjMTQyY2UzYTc0KTsKICAgICAgICAgICAgCiAgICAKICAgICAgICAgICAgdmFyIHBvcHVwXzkwMGViYTI4Y2U0NzQ4NTJiNmMwZTJiYWZlNDJjZWUxID0gTC5wb3B1cCh7bWF4V2lkdGg6ICczMDAnfSk7CgogICAgICAgICAgICAKICAgICAgICAgICAgICAgIHZhciBodG1sXzU4YWI2YTQ4MjY0NzRmMzk5ZTdhMTBkZGMxNjBkOTU5ID0gJCgnPGRpdiBpZD0iaHRtbF81OGFiNmE0ODI2NDc0ZjM5OWU3YTEwZGRjMTYwZDk1OSIgc3R5bGU9IndpZHRoOiAxMDAuMCU7IGhlaWdodDogMTAwLjAlOyI+VGhlIEFubmV4LCBOb3J0aCBNaWR0b3duLCBZb3JrdmlsbGUsIENlbnRyYWwgVG9yb250bzwvZGl2PicpWzBdOwogICAgICAgICAgICAgICAgcG9wdXBfOTAwZWJhMjhjZTQ3NDg1MmI2YzBlMmJhZmU0MmNlZTEuc2V0Q29udGVudChodG1sXzU4YWI2YTQ4MjY0NzRmMzk5ZTdhMTBkZGMxNjBkOTU5KTsKICAgICAgICAgICAgCgogICAgICAgICAgICBjaXJjbGVfbWFya2VyXzJiYzI5NzZmMTFmMjRiOWM5NzFkM2ZlM2Y2ZTYyMGNhLmJpbmRQb3B1cChwb3B1cF85MDBlYmEyOGNlNDc0ODUyYjZjMGUyYmFmZTQyY2VlMSk7CgogICAgICAgICAgICAKICAgICAgICAKICAgIAogICAgICAgICAgICB2YXIgY2lyY2xlX21hcmtlcl84MmEyZDk0ZDhlZWY0M2Q1OGEyMDI0NGU3N2ZiMWE0MiA9IEwuY2lyY2xlTWFya2VyKAogICAgICAgICAgICAgICAgWzQzLjY2MjY5NTYsLTc5LjQwMDA0OTNdLAogICAgICAgICAgICAgICAgewogICJidWJibGluZ01vdXNlRXZlbnRzIjogdHJ1ZSwKICAiY29sb3IiOiAiYmx1ZSIsCiAgImRhc2hBcnJheSI6IG51bGwsCiAgImRhc2hPZmZzZXQiOiBudWxsLAogICJmaWxsIjogdHJ1ZSwKICAiZmlsbENvbG9yIjogIiMzMTg2Y2MiLAogICJmaWxsT3BhY2l0eSI6IDAuNywKICAiZmlsbFJ1bGUiOiAiZXZlbm9kZCIsCiAgImxpbmVDYXAiOiAicm91bmQiLAogICJsaW5lSm9pbiI6ICJyb3VuZCIsCiAgIm9wYWNpdHkiOiAxLjAsCiAgInJhZGl1cyI6IDUsCiAgInN0cm9rZSI6IHRydWUsCiAgIndlaWdodCI6IDMKfQogICAgICAgICAgICAgICAgKS5hZGRUbyhtYXBfYWY4NjE0YmZiY2VjNGJjYTkzMzY4YmMxNDJjZTNhNzQpOwogICAgICAgICAgICAKICAgIAogICAgICAgICAgICB2YXIgcG9wdXBfZGI5ZjczYWNhZTk2NDMxOWIxY2ZmNDEzN2EzMTdmMDYgPSBMLnBvcHVwKHttYXhXaWR0aDogJzMwMCd9KTsKCiAgICAgICAgICAgIAogICAgICAgICAgICAgICAgdmFyIGh0bWxfYzAzY2RlZmJmNmNjNGI0NmEyOWFjYWJmZTM4MDhiYjYgPSAkKCc8ZGl2IGlkPSJodG1sX2MwM2NkZWZiZjZjYzRiNDZhMjlhY2FiZmUzODA4YmI2IiBzdHlsZT0id2lkdGg6IDEwMC4wJTsgaGVpZ2h0OiAxMDAuMCU7Ij5IYXJib3JkLCBVbml2ZXJzaXR5IG9mIFRvcm9udG8sIERvd250b3duIFRvcm9udG88L2Rpdj4nKVswXTsKICAgICAgICAgICAgICAgIHBvcHVwX2RiOWY3M2FjYWU5NjQzMTliMWNmZjQxMzdhMzE3ZjA2LnNldENvbnRlbnQoaHRtbF9jMDNjZGVmYmY2Y2M0YjQ2YTI5YWNhYmZlMzgwOGJiNik7CiAgICAgICAgICAgIAoKICAgICAgICAgICAgY2lyY2xlX21hcmtlcl84MmEyZDk0ZDhlZWY0M2Q1OGEyMDI0NGU3N2ZiMWE0Mi5iaW5kUG9wdXAocG9wdXBfZGI5ZjczYWNhZTk2NDMxOWIxY2ZmNDEzN2EzMTdmMDYpOwoKICAgICAgICAgICAgCiAgICAgICAgCiAgICAKICAgICAgICAgICAgdmFyIGNpcmNsZV9tYXJrZXJfNmMwYjAzNDJiOGI0NGY5YWFhYWVlMmVlMTlhYjg3YzAgPSBMLmNpcmNsZU1hcmtlcigKICAgICAgICAgICAgICAgIFs0My42NTMyMDU3LC03OS40MDAwNDkzXSwKICAgICAgICAgICAgICAgIHsKICAiYnViYmxpbmdNb3VzZUV2ZW50cyI6IHRydWUsCiAgImNvbG9yIjogImJsdWUiLAogICJkYXNoQXJyYXkiOiBudWxsLAogICJkYXNoT2Zmc2V0IjogbnVsbCwKICAiZmlsbCI6IHRydWUsCiAgImZpbGxDb2xvciI6ICIjMzE4NmNjIiwKICAiZmlsbE9wYWNpdHkiOiAwLjcsCiAgImZpbGxSdWxlIjogImV2ZW5vZGQiLAogICJsaW5lQ2FwIjogInJvdW5kIiwKICAibGluZUpvaW4iOiAicm91bmQiLAogICJvcGFjaXR5IjogMS4wLAogICJyYWRpdXMiOiA1LAogICJzdHJva2UiOiB0cnVlLAogICJ3ZWlnaHQiOiAzCn0KICAgICAgICAgICAgICAgICkuYWRkVG8obWFwX2FmODYxNGJmYmNlYzRiY2E5MzM2OGJjMTQyY2UzYTc0KTsKICAgICAgICAgICAgCiAgICAKICAgICAgICAgICAgdmFyIHBvcHVwXzhlMDdhOTE1OTVmNTRhNjA5MzA3YzUxMWUxZDQwYmEyID0gTC5wb3B1cCh7bWF4V2lkdGg6ICczMDAnfSk7CgogICAgICAgICAgICAKICAgICAgICAgICAgICAgIHZhciBodG1sXzBkZGMxOWE5ZTljMjQzYTZhZmIzMDczMjg2ZDY2NzA5ID0gJCgnPGRpdiBpZD0iaHRtbF8wZGRjMTlhOWU5YzI0M2E2YWZiMzA3MzI4NmQ2NjcwOSIgc3R5bGU9IndpZHRoOiAxMDAuMCU7IGhlaWdodDogMTAwLjAlOyI+Q2hpbmF0b3duLCBHcmFuZ2UgUGFyaywgS2Vuc2luZ3RvbiBNYXJrZXQsIERvd250b3duIFRvcm9udG88L2Rpdj4nKVswXTsKICAgICAgICAgICAgICAgIHBvcHVwXzhlMDdhOTE1OTVmNTRhNjA5MzA3YzUxMWUxZDQwYmEyLnNldENvbnRlbnQoaHRtbF8wZGRjMTlhOWU5YzI0M2E2YWZiMzA3MzI4NmQ2NjcwOSk7CiAgICAgICAgICAgIAoKICAgICAgICAgICAgY2lyY2xlX21hcmtlcl82YzBiMDM0MmI4YjQ0ZjlhYWFhZWUyZWUxOWFiODdjMC5iaW5kUG9wdXAocG9wdXBfOGUwN2E5MTU5NWY1NGE2MDkzMDdjNTExZTFkNDBiYTIpOwoKICAgICAgICAgICAgCiAgICAgICAgCiAgICAKICAgICAgICAgICAgdmFyIGNpcmNsZV9tYXJrZXJfMzZiMTk3N2U5MGZlNDE2ZjgwZThiY2IyMjRmODY4MmIgPSBMLmNpcmNsZU1hcmtlcigKICAgICAgICAgICAgICAgIFs0My42Mjg5NDY3LC03OS4zOTQ0MTk5XSwKICAgICAgICAgICAgICAgIHsKICAiYnViYmxpbmdNb3VzZUV2ZW50cyI6IHRydWUsCiAgImNvbG9yIjogImJsdWUiLAogICJkYXNoQXJyYXkiOiBudWxsLAogICJkYXNoT2Zmc2V0IjogbnVsbCwKICAiZmlsbCI6IHRydWUsCiAgImZpbGxDb2xvciI6ICIjMzE4NmNjIiwKICAiZmlsbE9wYWNpdHkiOiAwLjcsCiAgImZpbGxSdWxlIjogImV2ZW5vZGQiLAogICJsaW5lQ2FwIjogInJvdW5kIiwKICAibGluZUpvaW4iOiAicm91bmQiLAogICJvcGFjaXR5IjogMS4wLAogICJyYWRpdXMiOiA1LAogICJzdHJva2UiOiB0cnVlLAogICJ3ZWlnaHQiOiAzCn0KICAgICAgICAgICAgICAgICkuYWRkVG8obWFwX2FmODYxNGJmYmNlYzRiY2E5MzM2OGJjMTQyY2UzYTc0KTsKICAgICAgICAgICAgCiAgICAKICAgICAgICAgICAgdmFyIHBvcHVwXzAxYzY4ZDJhOTUxMTQyOTNhZWQ0YTRmNWEyN2YxZWI0ID0gTC5wb3B1cCh7bWF4V2lkdGg6ICczMDAnfSk7CgogICAgICAgICAgICAKICAgICAgICAgICAgICAgIHZhciBodG1sX2IyNWJkZGVkNWE5NDQ0NTU5YjI1OTNiYmJjZmY3OWY5ID0gJCgnPGRpdiBpZD0iaHRtbF9iMjViZGRlZDVhOTQ0NDU1OWIyNTkzYmJiY2ZmNzlmOSIgc3R5bGU9IndpZHRoOiAxMDAuMCU7IGhlaWdodDogMTAwLjAlOyI+SGFyYm91cmZyb250IFdlc3QsIEtpbmcgYW5kIFNwYWRpbmEsIEJhdGh1cnN0IFF1YXksIFJhaWx3YXkgTGFuZHMsIENOIFRvd2VyLCBJc2xhbmQgYWlycG9ydCwgU291dGggTmlhZ2FyYSwgRG93bnRvd24gVG9yb250bzwvZGl2PicpWzBdOwogICAgICAgICAgICAgICAgcG9wdXBfMDFjNjhkMmE5NTExNDI5M2FlZDRhNGY1YTI3ZjFlYjQuc2V0Q29udGVudChodG1sX2IyNWJkZGVkNWE5NDQ0NTU5YjI1OTNiYmJjZmY3OWY5KTsKICAgICAgICAgICAgCgogICAgICAgICAgICBjaXJjbGVfbWFya2VyXzM2YjE5NzdlOTBmZTQxNmY4MGU4YmNiMjI0Zjg2ODJiLmJpbmRQb3B1cChwb3B1cF8wMWM2OGQyYTk1MTE0MjkzYWVkNGE0ZjVhMjdmMWViNCk7CgogICAgICAgICAgICAKICAgICAgICAKICAgIAogICAgICAgICAgICB2YXIgY2lyY2xlX21hcmtlcl80ZjY2ODgwY2U5NTM0OWUxYWZjNjVmNzdjZjk5NTNmMCA9IEwuY2lyY2xlTWFya2VyKAogICAgICAgICAgICAgICAgWzQzLjY0NjQzNTIsLTc5LjM3NDg0NTk5OTk5OTk5XSwKICAgICAgICAgICAgICAgIHsKICAiYnViYmxpbmdNb3VzZUV2ZW50cyI6IHRydWUsCiAgImNvbG9yIjogImJsdWUiLAogICJkYXNoQXJyYXkiOiBudWxsLAogICJkYXNoT2Zmc2V0IjogbnVsbCwKICAiZmlsbCI6IHRydWUsCiAgImZpbGxDb2xvciI6ICIjMzE4NmNjIiwKICAiZmlsbE9wYWNpdHkiOiAwLjcsCiAgImZpbGxSdWxlIjogImV2ZW5vZGQiLAogICJsaW5lQ2FwIjogInJvdW5kIiwKICAibGluZUpvaW4iOiAicm91bmQiLAogICJvcGFjaXR5IjogMS4wLAogICJyYWRpdXMiOiA1LAogICJzdHJva2UiOiB0cnVlLAogICJ3ZWlnaHQiOiAzCn0KICAgICAgICAgICAgICAgICkuYWRkVG8obWFwX2FmODYxNGJmYmNlYzRiY2E5MzM2OGJjMTQyY2UzYTc0KTsKICAgICAgICAgICAgCiAgICAKICAgICAgICAgICAgdmFyIHBvcHVwX2IyZTdjMmIwNTg5YzQ2MWU4MWNiMzJhZDhkMmU1YTkxID0gTC5wb3B1cCh7bWF4V2lkdGg6ICczMDAnfSk7CgogICAgICAgICAgICAKICAgICAgICAgICAgICAgIHZhciBodG1sX2YyODk2M2JhZGEzYTQ3NzRhMzU0MGY2NzJmZWU1NWMwID0gJCgnPGRpdiBpZD0iaHRtbF9mMjg5NjNiYWRhM2E0Nzc0YTM1NDBmNjcyZmVlNTVjMCIgc3R5bGU9IndpZHRoOiAxMDAuMCU7IGhlaWdodDogMTAwLjAlOyI+U3RuIEEgUE8gQm94ZXMgMjUgVGhlIEVzcGxhbmFkZSwgRG93bnRvd24gVG9yb250bzwvZGl2PicpWzBdOwogICAgICAgICAgICAgICAgcG9wdXBfYjJlN2MyYjA1ODljNDYxZTgxY2IzMmFkOGQyZTVhOTEuc2V0Q29udGVudChodG1sX2YyODk2M2JhZGEzYTQ3NzRhMzU0MGY2NzJmZWU1NWMwKTsKICAgICAgICAgICAgCgogICAgICAgICAgICBjaXJjbGVfbWFya2VyXzRmNjY4ODBjZTk1MzQ5ZTFhZmM2NWY3N2NmOTk1M2YwLmJpbmRQb3B1cChwb3B1cF9iMmU3YzJiMDU4OWM0NjFlODFjYjMyYWQ4ZDJlNWE5MSk7CgogICAgICAgICAgICAKICAgICAgICAKICAgIAogICAgICAgICAgICB2YXIgY2lyY2xlX21hcmtlcl84MWY5ODc2NmNhM2Y0NDg2OGQ1NTQ3ZDE1MGNhM2NiOSA9IEwuY2lyY2xlTWFya2VyKAogICAgICAgICAgICAgICAgWzQzLjY0ODQyOTIsLTc5LjM4MjI4MDJdLAogICAgICAgICAgICAgICAgewogICJidWJibGluZ01vdXNlRXZlbnRzIjogdHJ1ZSwKICAiY29sb3IiOiAiYmx1ZSIsCiAgImRhc2hBcnJheSI6IG51bGwsCiAgImRhc2hPZmZzZXQiOiBudWxsLAogICJmaWxsIjogdHJ1ZSwKICAiZmlsbENvbG9yIjogIiMzMTg2Y2MiLAogICJmaWxsT3BhY2l0eSI6IDAuNywKICAiZmlsbFJ1bGUiOiAiZXZlbm9kZCIsCiAgImxpbmVDYXAiOiAicm91bmQiLAogICJsaW5lSm9pbiI6ICJyb3VuZCIsCiAgIm9wYWNpdHkiOiAxLjAsCiAgInJhZGl1cyI6IDUsCiAgInN0cm9rZSI6IHRydWUsCiAgIndlaWdodCI6IDMKfQogICAgICAgICAgICAgICAgKS5hZGRUbyhtYXBfYWY4NjE0YmZiY2VjNGJjYTkzMzY4YmMxNDJjZTNhNzQpOwogICAgICAgICAgICAKICAgIAogICAgICAgICAgICB2YXIgcG9wdXBfNjVkZDNjYjNiMmVhNDcyMmE0ODVmNTZlMjdjYTgwNzIgPSBMLnBvcHVwKHttYXhXaWR0aDogJzMwMCd9KTsKCiAgICAgICAgICAgIAogICAgICAgICAgICAgICAgdmFyIGh0bWxfOTlkYzU5MzlhYTZiNDQ2Mjk5M2RkYjM5MzM0MThiMDcgPSAkKCc8ZGl2IGlkPSJodG1sXzk5ZGM1OTM5YWE2YjQ0NjI5OTNkZGIzOTMzNDE4YjA3IiBzdHlsZT0id2lkdGg6IDEwMC4wJTsgaGVpZ2h0OiAxMDAuMCU7Ij5VbmRlcmdyb3VuZCBjaXR5LCBGaXJzdCBDYW5hZGlhbiBQbGFjZSwgRG93bnRvd24gVG9yb250bzwvZGl2PicpWzBdOwogICAgICAgICAgICAgICAgcG9wdXBfNjVkZDNjYjNiMmVhNDcyMmE0ODVmNTZlMjdjYTgwNzIuc2V0Q29udGVudChodG1sXzk5ZGM1OTM5YWE2YjQ0NjI5OTNkZGIzOTMzNDE4YjA3KTsKICAgICAgICAgICAgCgogICAgICAgICAgICBjaXJjbGVfbWFya2VyXzgxZjk4NzY2Y2EzZjQ0ODY4ZDU1NDdkMTUwY2EzY2I5LmJpbmRQb3B1cChwb3B1cF82NWRkM2NiM2IyZWE0NzIyYTQ4NWY1NmUyN2NhODA3Mik7CgogICAgICAgICAgICAKICAgICAgICAKICAgIAogICAgICAgICAgICB2YXIgY2lyY2xlX21hcmtlcl8yMTBmNTk1NTU2ZWQ0NmMyYWY1OWViNWQ3MGM3MmQyNSA9IEwuY2lyY2xlTWFya2VyKAogICAgICAgICAgICAgICAgWzQzLjY2OTU0MiwtNzkuNDIyNTYzN10sCiAgICAgICAgICAgICAgICB7CiAgImJ1YmJsaW5nTW91c2VFdmVudHMiOiB0cnVlLAogICJjb2xvciI6ICJibHVlIiwKICAiZGFzaEFycmF5IjogbnVsbCwKICAiZGFzaE9mZnNldCI6IG51bGwsCiAgImZpbGwiOiB0cnVlLAogICJmaWxsQ29sb3IiOiAiIzMxODZjYyIsCiAgImZpbGxPcGFjaXR5IjogMC43LAogICJmaWxsUnVsZSI6ICJldmVub2RkIiwKICAibGluZUNhcCI6ICJyb3VuZCIsCiAgImxpbmVKb2luIjogInJvdW5kIiwKICAib3BhY2l0eSI6IDEuMCwKICAicmFkaXVzIjogNSwKICAic3Ryb2tlIjogdHJ1ZSwKICAid2VpZ2h0IjogMwp9CiAgICAgICAgICAgICAgICApLmFkZFRvKG1hcF9hZjg2MTRiZmJjZWM0YmNhOTMzNjhiYzE0MmNlM2E3NCk7CiAgICAgICAgICAgIAogICAgCiAgICAgICAgICAgIHZhciBwb3B1cF8wMmIzN2RjN2M3Y2Y0MGM4YTVkODZmMDk4MmYxYWU2NyA9IEwucG9wdXAoe21heFdpZHRoOiAnMzAwJ30pOwoKICAgICAgICAgICAgCiAgICAgICAgICAgICAgICB2YXIgaHRtbF9hNTNhMzMwYTU2N2M0OTFjYjY3OGYzNzVjYzRjOGJiYiA9ICQoJzxkaXYgaWQ9Imh0bWxfYTUzYTMzMGE1NjdjNDkxY2I2NzhmMzc1Y2M0YzhiYmIiIHN0eWxlPSJ3aWR0aDogMTAwLjAlOyBoZWlnaHQ6IDEwMC4wJTsiPkNocmlzdGllLCBEb3dudG93biBUb3JvbnRvPC9kaXY+JylbMF07CiAgICAgICAgICAgICAgICBwb3B1cF8wMmIzN2RjN2M3Y2Y0MGM4YTVkODZmMDk4MmYxYWU2Ny5zZXRDb250ZW50KGh0bWxfYTUzYTMzMGE1NjdjNDkxY2I2NzhmMzc1Y2M0YzhiYmIpOwogICAgICAgICAgICAKCiAgICAgICAgICAgIGNpcmNsZV9tYXJrZXJfMjEwZjU5NTU1NmVkNDZjMmFmNTllYjVkNzBjNzJkMjUuYmluZFBvcHVwKHBvcHVwXzAyYjM3ZGM3YzdjZjQwYzhhNWQ4NmYwOTgyZjFhZTY3KTsKCiAgICAgICAgICAgIAogICAgICAgIAogICAgCiAgICAgICAgICAgIHZhciBjaXJjbGVfbWFya2VyX2IwMGIzNTgwZWIzMTRlNjQ4NzRlYTBiNTBiOTQxMjgxID0gTC5jaXJjbGVNYXJrZXIoCiAgICAgICAgICAgICAgICBbNDMuNjY5MDA1MTAwMDAwMDEsLTc5LjQ0MjI1OTNdLAogICAgICAgICAgICAgICAgewogICJidWJibGluZ01vdXNlRXZlbnRzIjogdHJ1ZSwKICAiY29sb3IiOiAiYmx1ZSIsCiAgImRhc2hBcnJheSI6IG51bGwsCiAgImRhc2hPZmZzZXQiOiBudWxsLAogICJmaWxsIjogdHJ1ZSwKICAiZmlsbENvbG9yIjogIiMzMTg2Y2MiLAogICJmaWxsT3BhY2l0eSI6IDAuNywKICAiZmlsbFJ1bGUiOiAiZXZlbm9kZCIsCiAgImxpbmVDYXAiOiAicm91bmQiLAogICJsaW5lSm9pbiI6ICJyb3VuZCIsCiAgIm9wYWNpdHkiOiAxLjAsCiAgInJhZGl1cyI6IDUsCiAgInN0cm9rZSI6IHRydWUsCiAgIndlaWdodCI6IDMKfQogICAgICAgICAgICAgICAgKS5hZGRUbyhtYXBfYWY4NjE0YmZiY2VjNGJjYTkzMzY4YmMxNDJjZTNhNzQpOwogICAgICAgICAgICAKICAgIAogICAgICAgICAgICB2YXIgcG9wdXBfYzNmOTg4MTgyNDI2NDE1YjhkOTEyMGViNTZjMDJiNjggPSBMLnBvcHVwKHttYXhXaWR0aDogJzMwMCd9KTsKCiAgICAgICAgICAgIAogICAgICAgICAgICAgICAgdmFyIGh0bWxfZDU0MTg3MzU3MzQ0NDIzNzk2ZTU3Y2Q2ZTdmNzk0OGUgPSAkKCc8ZGl2IGlkPSJodG1sX2Q1NDE4NzM1NzM0NDQyMzc5NmU1N2NkNmU3Zjc5NDhlIiBzdHlsZT0id2lkdGg6IDEwMC4wJTsgaGVpZ2h0OiAxMDAuMCU7Ij5EdWZmZXJpbiwgRG92ZXJjb3VydCBWaWxsYWdlLCBXZXN0IFRvcm9udG88L2Rpdj4nKVswXTsKICAgICAgICAgICAgICAgIHBvcHVwX2MzZjk4ODE4MjQyNjQxNWI4ZDkxMjBlYjU2YzAyYjY4LnNldENvbnRlbnQoaHRtbF9kNTQxODczNTczNDQ0MjM3OTZlNTdjZDZlN2Y3OTQ4ZSk7CiAgICAgICAgICAgIAoKICAgICAgICAgICAgY2lyY2xlX21hcmtlcl9iMDBiMzU4MGViMzE0ZTY0ODc0ZWEwYjUwYjk0MTI4MS5iaW5kUG9wdXAocG9wdXBfYzNmOTg4MTgyNDI2NDE1YjhkOTEyMGViNTZjMDJiNjgpOwoKICAgICAgICAgICAgCiAgICAgICAgCiAgICAKICAgICAgICAgICAgdmFyIGNpcmNsZV9tYXJrZXJfODQxNmY0YmM5NjI4NGVkZmE2YTE4MzIzMGM2ZGM4NDYgPSBMLmNpcmNsZU1hcmtlcigKICAgICAgICAgICAgICAgIFs0My42NDc5MjY3MDAwMDAwMDYsLTc5LjQxOTc0OTddLAogICAgICAgICAgICAgICAgewogICJidWJibGluZ01vdXNlRXZlbnRzIjogdHJ1ZSwKICAiY29sb3IiOiAiYmx1ZSIsCiAgImRhc2hBcnJheSI6IG51bGwsCiAgImRhc2hPZmZzZXQiOiBudWxsLAogICJmaWxsIjogdHJ1ZSwKICAiZmlsbENvbG9yIjogIiMzMTg2Y2MiLAogICJmaWxsT3BhY2l0eSI6IDAuNywKICAiZmlsbFJ1bGUiOiAiZXZlbm9kZCIsCiAgImxpbmVDYXAiOiAicm91bmQiLAogICJsaW5lSm9pbiI6ICJyb3VuZCIsCiAgIm9wYWNpdHkiOiAxLjAsCiAgInJhZGl1cyI6IDUsCiAgInN0cm9rZSI6IHRydWUsCiAgIndlaWdodCI6IDMKfQogICAgICAgICAgICAgICAgKS5hZGRUbyhtYXBfYWY4NjE0YmZiY2VjNGJjYTkzMzY4YmMxNDJjZTNhNzQpOwogICAgICAgICAgICAKICAgIAogICAgICAgICAgICB2YXIgcG9wdXBfMWM1NDg2NzBhOTg1NGMzMmIwMThjZmYyNzZhMDhmOGEgPSBMLnBvcHVwKHttYXhXaWR0aDogJzMwMCd9KTsKCiAgICAgICAgICAgIAogICAgICAgICAgICAgICAgdmFyIGh0bWxfZDgzZWM4YjY5ZGM4NDBlZTgzZDE0YzAwZDU1MzNiNTEgPSAkKCc8ZGl2IGlkPSJodG1sX2Q4M2VjOGI2OWRjODQwZWU4M2QxNGMwMGQ1NTMzYjUxIiBzdHlsZT0id2lkdGg6IDEwMC4wJTsgaGVpZ2h0OiAxMDAuMCU7Ij5MaXR0bGUgUG9ydHVnYWwsIFRyaW5pdHksIFdlc3QgVG9yb250bzwvZGl2PicpWzBdOwogICAgICAgICAgICAgICAgcG9wdXBfMWM1NDg2NzBhOTg1NGMzMmIwMThjZmYyNzZhMDhmOGEuc2V0Q29udGVudChodG1sX2Q4M2VjOGI2OWRjODQwZWU4M2QxNGMwMGQ1NTMzYjUxKTsKICAgICAgICAgICAgCgogICAgICAgICAgICBjaXJjbGVfbWFya2VyXzg0MTZmNGJjOTYyODRlZGZhNmExODMyMzBjNmRjODQ2LmJpbmRQb3B1cChwb3B1cF8xYzU0ODY3MGE5ODU0YzMyYjAxOGNmZjI3NmEwOGY4YSk7CgogICAgICAgICAgICAKICAgICAgICAKICAgIAogICAgICAgICAgICB2YXIgY2lyY2xlX21hcmtlcl9hOTcxMjlhZDQyMmM0ZmU4YTMyZWY0ZmE3NjEzNTk1MiA9IEwuY2lyY2xlTWFya2VyKAogICAgICAgICAgICAgICAgWzQzLjYzNjg0NzIsLTc5LjQyODE5MTQwMDAwMDAyXSwKICAgICAgICAgICAgICAgIHsKICAiYnViYmxpbmdNb3VzZUV2ZW50cyI6IHRydWUsCiAgImNvbG9yIjogImJsdWUiLAogICJkYXNoQXJyYXkiOiBudWxsLAogICJkYXNoT2Zmc2V0IjogbnVsbCwKICAiZmlsbCI6IHRydWUsCiAgImZpbGxDb2xvciI6ICIjMzE4NmNjIiwKICAiZmlsbE9wYWNpdHkiOiAwLjcsCiAgImZpbGxSdWxlIjogImV2ZW5vZGQiLAogICJsaW5lQ2FwIjogInJvdW5kIiwKICAibGluZUpvaW4iOiAicm91bmQiLAogICJvcGFjaXR5IjogMS4wLAogICJyYWRpdXMiOiA1LAogICJzdHJva2UiOiB0cnVlLAogICJ3ZWlnaHQiOiAzCn0KICAgICAgICAgICAgICAgICkuYWRkVG8obWFwX2FmODYxNGJmYmNlYzRiY2E5MzM2OGJjMTQyY2UzYTc0KTsKICAgICAgICAgICAgCiAgICAKICAgICAgICAgICAgdmFyIHBvcHVwX2MyNzNmM2I2MzFmYjQ0ODdhNjMzMzQ5M2U4MDZjNDQxID0gTC5wb3B1cCh7bWF4V2lkdGg6ICczMDAnfSk7CgogICAgICAgICAgICAKICAgICAgICAgICAgICAgIHZhciBodG1sX2QyYWRjYjJkYjYyYjRiMTg5ZGJlZTc4YjJhZmJkMjAyID0gJCgnPGRpdiBpZD0iaHRtbF9kMmFkY2IyZGI2MmI0YjE4OWRiZWU3OGIyYWZiZDIwMiIgc3R5bGU9IndpZHRoOiAxMDAuMCU7IGhlaWdodDogMTAwLjAlOyI+RXhoaWJpdGlvbiBQbGFjZSwgUGFya2RhbGUgVmlsbGFnZSwgQnJvY2t0b24sIFdlc3QgVG9yb250bzwvZGl2PicpWzBdOwogICAgICAgICAgICAgICAgcG9wdXBfYzI3M2YzYjYzMWZiNDQ4N2E2MzMzNDkzZTgwNmM0NDEuc2V0Q29udGVudChodG1sX2QyYWRjYjJkYjYyYjRiMTg5ZGJlZTc4YjJhZmJkMjAyKTsKICAgICAgICAgICAgCgogICAgICAgICAgICBjaXJjbGVfbWFya2VyX2E5NzEyOWFkNDIyYzRmZThhMzJlZjRmYTc2MTM1OTUyLmJpbmRQb3B1cChwb3B1cF9jMjczZjNiNjMxZmI0NDg3YTYzMzM0OTNlODA2YzQ0MSk7CgogICAgICAgICAgICAKICAgICAgICAKICAgIAogICAgICAgICAgICB2YXIgY2lyY2xlX21hcmtlcl81ZmEwZjgxMzkyM2Y0OTQyYTQ3MjY1NDM2MDUxMzkzOCA9IEwuY2lyY2xlTWFya2VyKAogICAgICAgICAgICAgICAgWzQzLjY2MTYwODMsLTc5LjQ2NDc2MzI5OTk5OTk5XSwKICAgICAgICAgICAgICAgIHsKICAiYnViYmxpbmdNb3VzZUV2ZW50cyI6IHRydWUsCiAgImNvbG9yIjogImJsdWUiLAogICJkYXNoQXJyYXkiOiBudWxsLAogICJkYXNoT2Zmc2V0IjogbnVsbCwKICAiZmlsbCI6IHRydWUsCiAgImZpbGxDb2xvciI6ICIjMzE4NmNjIiwKICAiZmlsbE9wYWNpdHkiOiAwLjcsCiAgImZpbGxSdWxlIjogImV2ZW5vZGQiLAogICJsaW5lQ2FwIjogInJvdW5kIiwKICAibGluZUpvaW4iOiAicm91bmQiLAogICJvcGFjaXR5IjogMS4wLAogICJyYWRpdXMiOiA1LAogICJzdHJva2UiOiB0cnVlLAogICJ3ZWlnaHQiOiAzCn0KICAgICAgICAgICAgICAgICkuYWRkVG8obWFwX2FmODYxNGJmYmNlYzRiY2E5MzM2OGJjMTQyY2UzYTc0KTsKICAgICAgICAgICAgCiAgICAKICAgICAgICAgICAgdmFyIHBvcHVwXzQwMjlkMWIyZWQxZDQ0MTRiMDUwNjZiMzRiMmRmNjk1ID0gTC5wb3B1cCh7bWF4V2lkdGg6ICczMDAnfSk7CgogICAgICAgICAgICAKICAgICAgICAgICAgICAgIHZhciBodG1sXzJlZmZjNDQ1YzcxYzQ5MWJhMTJkYWMwMmQ5YmFhNDgwID0gJCgnPGRpdiBpZD0iaHRtbF8yZWZmYzQ0NWM3MWM0OTFiYTEyZGFjMDJkOWJhYTQ4MCIgc3R5bGU9IndpZHRoOiAxMDAuMCU7IGhlaWdodDogMTAwLjAlOyI+VGhlIEp1bmN0aW9uIFNvdXRoLCBIaWdoIFBhcmssIFdlc3QgVG9yb250bzwvZGl2PicpWzBdOwogICAgICAgICAgICAgICAgcG9wdXBfNDAyOWQxYjJlZDFkNDQxNGIwNTA2NmIzNGIyZGY2OTUuc2V0Q29udGVudChodG1sXzJlZmZjNDQ1YzcxYzQ5MWJhMTJkYWMwMmQ5YmFhNDgwKTsKICAgICAgICAgICAgCgogICAgICAgICAgICBjaXJjbGVfbWFya2VyXzVmYTBmODEzOTIzZjQ5NDJhNDcyNjU0MzYwNTEzOTM4LmJpbmRQb3B1cChwb3B1cF80MDI5ZDFiMmVkMWQ0NDE0YjA1MDY2YjM0YjJkZjY5NSk7CgogICAgICAgICAgICAKICAgICAgICAKICAgIAogICAgICAgICAgICB2YXIgY2lyY2xlX21hcmtlcl9mMzAyMjA5YzBmNGE0ZmNkODY3MDQxYmY5MmIzZDA4YyA9IEwuY2lyY2xlTWFya2VyKAogICAgICAgICAgICAgICAgWzQzLjY0ODk1OTcsLTc5LjQ1NjMyNV0sCiAgICAgICAgICAgICAgICB7CiAgImJ1YmJsaW5nTW91c2VFdmVudHMiOiB0cnVlLAogICJjb2xvciI6ICJibHVlIiwKICAiZGFzaEFycmF5IjogbnVsbCwKICAiZGFzaE9mZnNldCI6IG51bGwsCiAgImZpbGwiOiB0cnVlLAogICJmaWxsQ29sb3IiOiAiIzMxODZjYyIsCiAgImZpbGxPcGFjaXR5IjogMC43LAogICJmaWxsUnVsZSI6ICJldmVub2RkIiwKICAibGluZUNhcCI6ICJyb3VuZCIsCiAgImxpbmVKb2luIjogInJvdW5kIiwKICAib3BhY2l0eSI6IDEuMCwKICAicmFkaXVzIjogNSwKICAic3Ryb2tlIjogdHJ1ZSwKICAid2VpZ2h0IjogMwp9CiAgICAgICAgICAgICAgICApLmFkZFRvKG1hcF9hZjg2MTRiZmJjZWM0YmNhOTMzNjhiYzE0MmNlM2E3NCk7CiAgICAgICAgICAgIAogICAgCiAgICAgICAgICAgIHZhciBwb3B1cF82ZjQ4NTIzYjk3ODk0ZWIxYjg3NzdhOTk0Y2U4ODNkNyA9IEwucG9wdXAoe21heFdpZHRoOiAnMzAwJ30pOwoKICAgICAgICAgICAgCiAgICAgICAgICAgICAgICB2YXIgaHRtbF85MTc1ZGEzNzlkNmY0MDE5YWQzYWRlNTQwOTBkNzRkNCA9ICQoJzxkaXYgaWQ9Imh0bWxfOTE3NWRhMzc5ZDZmNDAxOWFkM2FkZTU0MDkwZDc0ZDQiIHN0eWxlPSJ3aWR0aDogMTAwLjAlOyBoZWlnaHQ6IDEwMC4wJTsiPlJvbmNlc3ZhbGxlcywgUGFya2RhbGUsIFdlc3QgVG9yb250bzwvZGl2PicpWzBdOwogICAgICAgICAgICAgICAgcG9wdXBfNmY0ODUyM2I5Nzg5NGViMWI4Nzc3YTk5NGNlODgzZDcuc2V0Q29udGVudChodG1sXzkxNzVkYTM3OWQ2ZjQwMTlhZDNhZGU1NDA5MGQ3NGQ0KTsKICAgICAgICAgICAgCgogICAgICAgICAgICBjaXJjbGVfbWFya2VyX2YzMDIyMDljMGY0YTRmY2Q4NjcwNDFiZjkyYjNkMDhjLmJpbmRQb3B1cChwb3B1cF82ZjQ4NTIzYjk3ODk0ZWIxYjg3NzdhOTk0Y2U4ODNkNyk7CgogICAgICAgICAgICAKICAgICAgICAKICAgIAogICAgICAgICAgICB2YXIgY2lyY2xlX21hcmtlcl9jYjc4NmI1M2EyZmQ0NDBmODc3MWQ5NGUzYjY2MGY0OCA9IEwuY2lyY2xlTWFya2VyKAogICAgICAgICAgICAgICAgWzQzLjY1MTU3MDYsLTc5LjQ4NDQ0OTldLAogICAgICAgICAgICAgICAgewogICJidWJibGluZ01vdXNlRXZlbnRzIjogdHJ1ZSwKICAiY29sb3IiOiAiYmx1ZSIsCiAgImRhc2hBcnJheSI6IG51bGwsCiAgImRhc2hPZmZzZXQiOiBudWxsLAogICJmaWxsIjogdHJ1ZSwKICAiZmlsbENvbG9yIjogIiMzMTg2Y2MiLAogICJmaWxsT3BhY2l0eSI6IDAuNywKICAiZmlsbFJ1bGUiOiAiZXZlbm9kZCIsCiAgImxpbmVDYXAiOiAicm91bmQiLAogICJsaW5lSm9pbiI6ICJyb3VuZCIsCiAgIm9wYWNpdHkiOiAxLjAsCiAgInJhZGl1cyI6IDUsCiAgInN0cm9rZSI6IHRydWUsCiAgIndlaWdodCI6IDMKfQogICAgICAgICAgICAgICAgKS5hZGRUbyhtYXBfYWY4NjE0YmZiY2VjNGJjYTkzMzY4YmMxNDJjZTNhNzQpOwogICAgICAgICAgICAKICAgIAogICAgICAgICAgICB2YXIgcG9wdXBfYzcwY2M2ZGJlYTljNGI5YWFhYjk1Mzk3ZDNiNzA5YTMgPSBMLnBvcHVwKHttYXhXaWR0aDogJzMwMCd9KTsKCiAgICAgICAgICAgIAogICAgICAgICAgICAgICAgdmFyIGh0bWxfODJmODRmODhhZGIxNDU3M2I3OGEwZjlmYTU5NDU0ZDAgPSAkKCc8ZGl2IGlkPSJodG1sXzgyZjg0Zjg4YWRiMTQ1NzNiNzhhMGY5ZmE1OTQ1NGQwIiBzdHlsZT0id2lkdGg6IDEwMC4wJTsgaGVpZ2h0OiAxMDAuMCU7Ij5SdW5ueW1lZGUsIFN3YW5zZWEsIFdlc3QgVG9yb250bzwvZGl2PicpWzBdOwogICAgICAgICAgICAgICAgcG9wdXBfYzcwY2M2ZGJlYTljNGI5YWFhYjk1Mzk3ZDNiNzA5YTMuc2V0Q29udGVudChodG1sXzgyZjg0Zjg4YWRiMTQ1NzNiNzhhMGY5ZmE1OTQ1NGQwKTsKICAgICAgICAgICAgCgogICAgICAgICAgICBjaXJjbGVfbWFya2VyX2NiNzg2YjUzYTJmZDQ0MGY4NzcxZDk0ZTNiNjYwZjQ4LmJpbmRQb3B1cChwb3B1cF9jNzBjYzZkYmVhOWM0YjlhYWFiOTUzOTdkM2I3MDlhMyk7CgogICAgICAgICAgICAKICAgICAgICAKICAgIAogICAgICAgICAgICB2YXIgY2lyY2xlX21hcmtlcl9iZmI5NzYyNDUxMjg0YTU1ODQxZDQyNzFjOWQ3MmFkZiA9IEwuY2lyY2xlTWFya2VyKAogICAgICAgICAgICAgICAgWzQzLjY2Mjc0MzksLTc5LjMyMTU1OF0sCiAgICAgICAgICAgICAgICB7CiAgImJ1YmJsaW5nTW91c2VFdmVudHMiOiB0cnVlLAogICJjb2xvciI6ICJibHVlIiwKICAiZGFzaEFycmF5IjogbnVsbCwKICAiZGFzaE9mZnNldCI6IG51bGwsCiAgImZpbGwiOiB0cnVlLAogICJmaWxsQ29sb3IiOiAiIzMxODZjYyIsCiAgImZpbGxPcGFjaXR5IjogMC43LAogICJmaWxsUnVsZSI6ICJldmVub2RkIiwKICAibGluZUNhcCI6ICJyb3VuZCIsCiAgImxpbmVKb2luIjogInJvdW5kIiwKICAib3BhY2l0eSI6IDEuMCwKICAicmFkaXVzIjogNSwKICAic3Ryb2tlIjogdHJ1ZSwKICAid2VpZ2h0IjogMwp9CiAgICAgICAgICAgICAgICApLmFkZFRvKG1hcF9hZjg2MTRiZmJjZWM0YmNhOTMzNjhiYzE0MmNlM2E3NCk7CiAgICAgICAgICAgIAogICAgCiAgICAgICAgICAgIHZhciBwb3B1cF9mYmU0YWUwZTBmYTc0MGIyOTg3MThhMzk4OWQwODVhNiA9IEwucG9wdXAoe21heFdpZHRoOiAnMzAwJ30pOwoKICAgICAgICAgICAgCiAgICAgICAgICAgICAgICB2YXIgaHRtbF9jNTAwMTk0OTkzYjc0Y2Y1OGI4NzVjYjlkYjRlYmUzZiA9ICQoJzxkaXYgaWQ9Imh0bWxfYzUwMDE5NDk5M2I3NGNmNThiODc1Y2I5ZGI0ZWJlM2YiIHN0eWxlPSJ3aWR0aDogMTAwLjAlOyBoZWlnaHQ6IDEwMC4wJTsiPkJ1c2luZXNzIHJlcGx5IG1haWwgUHJvY2Vzc2luZyBDZW50cmU5NjkgRWFzdGVybiwgRWFzdCBUb3JvbnRvPC9kaXY+JylbMF07CiAgICAgICAgICAgICAgICBwb3B1cF9mYmU0YWUwZTBmYTc0MGIyOTg3MThhMzk4OWQwODVhNi5zZXRDb250ZW50KGh0bWxfYzUwMDE5NDk5M2I3NGNmNThiODc1Y2I5ZGI0ZWJlM2YpOwogICAgICAgICAgICAKCiAgICAgICAgICAgIGNpcmNsZV9tYXJrZXJfYmZiOTc2MjQ1MTI4NGE1NTg0MWQ0MjcxYzlkNzJhZGYuYmluZFBvcHVwKHBvcHVwX2ZiZTRhZTBlMGZhNzQwYjI5ODcxOGEzOTg5ZDA4NWE2KTsKCiAgICAgICAgICAgIAogICAgICAgIAo8L3NjcmlwdD4=\" style=\"position:absolute;width:100%;height:100%;left:0;top:0;border:none !important;\" allowfullscreen webkitallowfullscreen mozallowfullscreen></iframe></div></div>"
+      ],
+      "text/plain": [
+       "<folium.folium.Map at 0x1a184ac3c8>"
+      ]
+     },
+     "execution_count": 16,
+     "metadata": {},
+     "output_type": "execute_result"
+    }
+   ],
+   "source": [
+    "# create map of New York using latitude and longitude values\n",
+    "map_toronto = folium.Map(location=[latitude, longitude], zoom_start=10)\n",
+    "\n",
+    "# add markers to map\n",
+    "for lat, lng, borough, neighbourhood in zip(dftor['Latitude'], dftor['Longitude'], dftor['Borough'], dftor['Neighbourhood']):\n",
+    "    label = '{}, {}'.format(neighbourhood, borough)\n",
+    "    label = folium.Popup(label, parse_html=True)\n",
+    "    folium.CircleMarker(\n",
+    "        [lat, lng],\n",
+    "        radius=5,\n",
+    "        popup=label,\n",
+    "        color='blue',\n",
+    "        fill=True,\n",
+    "        fill_color='#3186cc',\n",
+    "        fill_opacity=0.7,\n",
+    "        parse_html=False).add_to(map_toronto)  \n",
+    "    \n",
+    "map_toronto"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 18,
+   "metadata": {},
+   "outputs": [
+    {
+     "data": {
+      "text/plain": [
+       "'The Beaches'"
+      ]
+     },
+     "execution_count": 18,
+     "metadata": {},
+     "output_type": "execute_result"
+    }
+   ],
+   "source": [
+    "dftor.loc[0,'Neighbourhood']"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 19,
+   "metadata": {},
+   "outputs": [
+    {
+     "name": "stdout",
+     "output_type": "stream",
+     "text": [
+      "Latitude and longitude values of The Beaches are 43.67635739999999, -79.2930312.\n"
+     ]
+    }
+   ],
+   "source": [
+    "neighbourhood_latitude = dftor.loc[0, 'Latitude'] # neighbourhood latitude value\n",
+    "neighbourhood_longitude = dftor.loc[0, 'Longitude'] # neighbourhood longitude value\n",
+    "\n",
+    "neighbourhood_name = dftor.loc[0, 'Neighbourhood'] # neighbourhood name\n",
+    "\n",
+    "print('Latitude and longitude values of {} are {}, {}.'.format(neighbourhood_name, \n",
+    "                                                               neighbourhood_latitude, \n",
+    "                                                               neighbourhood_longitude))"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "# Explore Neighborhoods in Toronto"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 22,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "def getNearbyVenues(names, latitudes, longitudes, radius=500):\n",
+    "    \n",
+    "    venues_list=[]\n",
+    "    for name, lat, lng in zip(names, latitudes, longitudes):\n",
+    "        print(name)\n",
+    "            \n",
+    "        # create the API request URL\n",
+    "        url = 'https://api.foursquare.com/v2/venues/explore?&client_id={}&client_secret={}&v={}&ll={},{}&radius={}&limit={}'.format(\n",
+    "            CLIENT_ID, \n",
+    "            CLIENT_SECRET, \n",
+    "            VERSION, \n",
+    "            lat, \n",
+    "            lng, \n",
+    "            radius, \n",
+    "            LIMIT)\n",
+    "            \n",
+    "        # make the GET request\n",
+    "        results = requests.get(url).json()[\"response\"]['groups'][0]['items']\n",
+    "        \n",
+    "        # return only relevant information for each nearby venue\n",
+    "        venues_list.append([(\n",
+    "            name, \n",
+    "            lat, \n",
+    "            lng, \n",
+    "            v['venue']['name'], \n",
+    "            v['venue']['location']['lat'], \n",
+    "            v['venue']['location']['lng'],  \n",
+    "            v['venue']['categories'][0]['name']) for v in results])\n",
+    "\n",
+    "    nearby_venues = pd.DataFrame([item for venue_list in venues_list for item in venue_list])\n",
+    "    nearby_venues.columns = ['Neighborhood', \n",
+    "                  'Neighborhood Latitude', \n",
+    "                  'Neighborhood Longitude', \n",
+    "                  'Venue', \n",
+    "                  'Venue Latitude', \n",
+    "                  'Venue Longitude', \n",
+    "                  'Venue Category']\n",
+    "    \n",
+    "    return(nearby_venues)"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 24,
+   "metadata": {},
+   "outputs": [
+    {
+     "name": "stdout",
+     "output_type": "stream",
+     "text": [
+      "The Beaches\n"
+     ]
+    },
+    {
+     "ename": "NameError",
+     "evalue": "name 'CLIENT_ID' is not defined",
+     "output_type": "error",
+     "traceback": [
+      "\u001b[0;31m---------------------------------------------------------------------------\u001b[0m",
+      "\u001b[0;31mNameError\u001b[0m                                 Traceback (most recent call last)",
+      "\u001b[0;32m<ipython-input-24-14c59f39760f>\u001b[0m in \u001b[0;36m<module>\u001b[0;34m()\u001b[0m\n\u001b[1;32m      1\u001b[0m toronto_venues = getNearbyVenues(names=dftor['Neighbourhood'],\n\u001b[1;32m      2\u001b[0m                                    \u001b[0mlatitudes\u001b[0m\u001b[0;34m=\u001b[0m\u001b[0mdftor\u001b[0m\u001b[0;34m[\u001b[0m\u001b[0;34m'Latitude'\u001b[0m\u001b[0;34m]\u001b[0m\u001b[0;34m,\u001b[0m\u001b[0;34m\u001b[0m\u001b[0m\n\u001b[0;32m----> 3\u001b[0;31m                                    \u001b[0mlongitudes\u001b[0m\u001b[0;34m=\u001b[0m\u001b[0mdftor\u001b[0m\u001b[0;34m[\u001b[0m\u001b[0;34m'Longitude'\u001b[0m\u001b[0;34m]\u001b[0m\u001b[0;34m\u001b[0m\u001b[0m\n\u001b[0m\u001b[1;32m      4\u001b[0m                                   )\n",
+      "\u001b[0;32m<ipython-input-22-8c9a08363335>\u001b[0m in \u001b[0;36mgetNearbyVenues\u001b[0;34m(names, latitudes, longitudes, radius)\u001b[0m\n\u001b[1;32m      7\u001b[0m         \u001b[0;31m# create the API request URL\u001b[0m\u001b[0;34m\u001b[0m\u001b[0;34m\u001b[0m\u001b[0m\n\u001b[1;32m      8\u001b[0m         url = 'https://api.foursquare.com/v2/venues/explore?&client_id={}&client_secret={}&v={}&ll={},{}&radius={}&limit={}'.format(\n\u001b[0;32m----> 9\u001b[0;31m             \u001b[0mCLIENT_ID\u001b[0m\u001b[0;34m,\u001b[0m\u001b[0;34m\u001b[0m\u001b[0m\n\u001b[0m\u001b[1;32m     10\u001b[0m             \u001b[0mCLIENT_SECRET\u001b[0m\u001b[0;34m,\u001b[0m\u001b[0;34m\u001b[0m\u001b[0m\n\u001b[1;32m     11\u001b[0m             \u001b[0mVERSION\u001b[0m\u001b[0;34m,\u001b[0m\u001b[0;34m\u001b[0m\u001b[0m\n",
+      "\u001b[0;31mNameError\u001b[0m: name 'CLIENT_ID' is not defined"
+     ]
+    }
+   ],
+   "source": [
+    "toronto_venues = getNearbyVenues(names=dftor['Neighbourhood'],\n",
+    "                                   latitudes=dftor['Latitude'],\n",
+    "                                   longitudes=dftor['Longitude']\n",
+    "                                  )"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "# Unable to access API :( "
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "## But if you analyze the code above i'm sure the outcome would have been ok. I write below the code if the i could access the api. "
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 27,
+   "metadata": {},
+   "outputs": [
+    {
+     "ename": "NameError",
+     "evalue": "name 'toronto_venues' is not defined",
+     "output_type": "error",
+     "traceback": [
+      "\u001b[0;31m---------------------------------------------------------------------------\u001b[0m",
+      "\u001b[0;31mNameError\u001b[0m                                 Traceback (most recent call last)",
+      "\u001b[0;32m<ipython-input-27-6cab0d73e972>\u001b[0m in \u001b[0;36m<module>\u001b[0;34m()\u001b[0m\n\u001b[1;32m      1\u001b[0m \u001b[0;31m# this code would have followed (now error)\u001b[0m\u001b[0;34m\u001b[0m\u001b[0;34m\u001b[0m\u001b[0m\n\u001b[0;32m----> 2\u001b[0;31m \u001b[0mprint\u001b[0m\u001b[0;34m(\u001b[0m\u001b[0mtoronto_venues\u001b[0m\u001b[0;34m.\u001b[0m\u001b[0mshape\u001b[0m\u001b[0;34m)\u001b[0m\u001b[0;34m\u001b[0m\u001b[0m\n\u001b[0m\u001b[1;32m      3\u001b[0m \u001b[0mtoronto_venues\u001b[0m\u001b[0;34m.\u001b[0m\u001b[0mhead\u001b[0m\u001b[0;34m(\u001b[0m\u001b[0;34m)\u001b[0m\u001b[0;34m\u001b[0m\u001b[0m\n",
+      "\u001b[0;31mNameError\u001b[0m: name 'toronto_venues' is not defined"
+     ]
+    }
+   ],
+   "source": [
+    "# this code would have followed (now error)\n",
+    "print(toronto_venues.shape)\n",
+    "toronto_venues.head()"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 30,
+   "metadata": {},
+   "outputs": [
+    {
+     "ename": "NameError",
+     "evalue": "name 'toronto_venues' is not defined",
+     "output_type": "error",
+     "traceback": [
+      "\u001b[0;31m---------------------------------------------------------------------------\u001b[0m",
+      "\u001b[0;31mNameError\u001b[0m                                 Traceback (most recent call last)",
+      "\u001b[0;32m<ipython-input-30-93bd03a6ab04>\u001b[0m in \u001b[0;36m<module>\u001b[0;34m()\u001b[0m\n\u001b[1;32m      1\u001b[0m \u001b[0;31m# followed by this\u001b[0m\u001b[0;34m\u001b[0m\u001b[0;34m\u001b[0m\u001b[0m\n\u001b[0;32m----> 2\u001b[0;31m \u001b[0mtoronto_venues\u001b[0m\u001b[0;34m.\u001b[0m\u001b[0mgroupby\u001b[0m\u001b[0;34m(\u001b[0m\u001b[0;34m'Neighborhood'\u001b[0m\u001b[0;34m)\u001b[0m\u001b[0;34m.\u001b[0m\u001b[0mcount\u001b[0m\u001b[0;34m(\u001b[0m\u001b[0;34m)\u001b[0m\u001b[0;34m\u001b[0m\u001b[0m\n\u001b[0m",
+      "\u001b[0;31mNameError\u001b[0m: name 'toronto_venues' is not defined"
+     ]
+    }
+   ],
+   "source": [
+    "# followed by this (now error)\n",
+    "toronto_venues.groupby('Neighborhood').count()"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "outputs": [],
+   "source": []
+  }
+ ],
+ "metadata": {
+  "kernelspec": {
+   "display_name": "Python 3",
+   "language": "python",
+   "name": "python3"
+  },
+  "language_info": {
+   "codemirror_mode": {
+    "name": "ipython",
+    "version": 3
+   },
+   "file_extension": ".py",
+   "mimetype": "text/x-python",
+   "name": "python",
+   "nbconvert_exporter": "python",
+   "pygments_lexer": "ipython3",
+   "version": "3.7.0"
+  }
+ },
+ "nbformat": 4,
+ "nbformat_minor": 2
+}
